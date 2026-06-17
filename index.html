@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en" style="color-scheme:light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nectar Capital — Sponsor Portal</title>
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+  window.supabase = createClient(
+    "https://wxfqhrfagwyusxmwlcfz.supabase.co",
+    "sb_publishable_CQG1nuHuso2snrCMDasfeQ_8fcbI3Ws"
+  );
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&family=Manrope:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --page-bg: #F8F8F3;
+    --navy: #01041D;
+    --card: #FFFFFF;
+    --card2: #F0F0EA;
+    --accent: #971BFF;
+    --accent-dim: #7A12D9;
+    --statement-purple: #5b3fb5;
+    --text: #01041D;
+    --dim: #5A6A8A;
+    --border: rgba(1,4,29,0.10);
+    --border-accent: rgba(151,27,255,0.20);
+    --green: #1A9E6E;
+    --red: #C0392B;
+    --amber: #D68910;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--page-bg);
+    color: var(--text);
+    font-family: 'Manrope', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── APP CHROME (header) ── */
+  .app-header {
+    background: var(--page-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .app-logo {
+    font-family: 'Manrope', sans-serif;
+    font-size: 22px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    font-weight: 600;
+  }
+  .app-logo span {
+    color: var(--dim);
+    font-size: 13px;
+    margin-left: 12px;
+    font-weight: 300;
+  }
+  .app-header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  .app-header-right .email { font-family: 'DM Mono', monospace; color: var(--text); }
+  .back-link {
+    font-size: 12px;
+    color: var(--dim);
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+  .back-link:hover { color: var(--accent); border-color: var(--border-accent); }
+
+  /* ── BUTTONS ── */
+  .btn {
+    font-family: 'Manrope', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary {
+    background: var(--accent);
+    color: #FFFFFF;
+    border-color: var(--accent);
+  }
+  .btn-primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); color: #FFFFFF; }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  /* ── MAIN CONTAINER ── */
+  .main { padding: 28px 32px; max-width: 1100px; margin: 0 auto; }
+
+  .hidden { display: none !important; }
+
+  /* ── LOGIN ── */
+  .login-shell {
+    min-height: calc(100vh - 70px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 36px 32px;
+  }
+  .login-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  .login-sub {
+    color: var(--dim);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+  .login-card input[type="email"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    outline: none;
+  }
+  .login-card input[type="email"]:focus {
+    border-color: var(--accent);
+    background: var(--card);
+  }
+  .login-msg {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .login-msg.success {
+    background: rgba(26,158,110,0.08);
+    color: var(--green);
+    border: 1px solid rgba(26,158,110,0.20);
+  }
+  .login-msg.error {
+    background: rgba(192,57,43,0.08);
+    color: var(--red);
+    border: 1px solid rgba(192,57,43,0.20);
+  }
+
+  /* ── PICKER ── */
+  .picker-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px;
+    margin-bottom: 6px;
+  }
+  .picker-sub {
+    color: var(--dim);
+    font-size: 13px;
+    margin-bottom: 22px;
+  }
+  .picker-search {
+    width: 100%;
+    max-width: 360px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card);
+    font-family: 'Manrope', sans-serif;
+    font-size: 13px;
+    margin-bottom: 18px;
+    outline: none;
+  }
+  .picker-search:focus { border-color: var(--accent); }
+
+  .picker-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .picker-table thead {
+    background: var(--card2);
+  }
+  .picker-table th, .picker-table td {
+    text-align: left;
+    padding: 11px 14px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .picker-table th {
+    color: var(--dim);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10.5px;
+  }
+  .picker-table tbody tr { cursor: pointer; transition: background 0.12s; }
+  .picker-table tbody tr:hover { background: var(--card2); }
+  .picker-table tbody tr:last-child td { border-bottom: none; }
+  .picker-table td.num { text-align: right; font-family: 'DM Mono', monospace; }
+  .pill-status {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .pill-status.open { background: rgba(26,158,110,0.10); color: var(--green); }
+  .pill-status.closed { background: rgba(1,4,29,0.06); color: var(--dim); }
+  .pill-status.workout { background: rgba(214,137,16,0.12); color: var(--amber); }
+
+  /* ── STATEMENT VIEW ── */
+  .stmt-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 14px;
+  }
+
+  .statement {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* Brand header bar */
+  .stmt-brand {
+    background: var(--statement-purple);
+    color: #FFFFFF;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .stmt-brand .wordmark {
+    font-family: 'Manrope', sans-serif;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .stmt-brand .url {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    opacity: 0.9;
+  }
+
+  /* Title bar with entity / loan / statement date */
+  .stmt-title-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: end;
+    gap: 24px;
+    padding: 22px 32px 18px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stmt-entity {
+    font-family: 'DM Serif Display', serif;
+    font-size: 24px;
+    line-height: 1.1;
+    color: var(--text);
+  }
+  .stmt-loan-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--dim);
+  }
+  .stmt-date-field { text-align: right; }
+  .stmt-date-field label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    margin-bottom: 4px;
+  }
+  .stmt-date-field input {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: var(--card);
+    color: var(--text);
+  }
+
+  /* Two-column sections */
+  .stmt-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stmt-two-col > div { padding: 18px 28px; }
+  .stmt-two-col > div + div { border-left: 1px solid var(--border); }
+  .stmt-block-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 11px;
+    color: var(--statement-purple);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 16px;
+    font-size: 12.5px;
+  }
+  .kv .k { color: var(--dim); }
+  .kv .v { font-family: 'DM Mono', monospace; color: var(--text); text-align: right; }
+  .kv .v.bold { font-weight: 600; }
+  .kv .v.total { color: var(--statement-purple); font-weight: 600; }
+
+  /* Activity & schedule tables */
+  .stmt-section {
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stmt-section:last-of-type { border-bottom: none; }
+  .stmt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .stmt-table th, .stmt-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stmt-table thead th {
+    text-align: left;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 10.5px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+  }
+  .stmt-table th.num, .stmt-table td.num {
+    text-align: right;
+    font-family: 'DM Mono', monospace;
+  }
+  .stmt-table tbody tr:last-child td { border-bottom: none; }
+  .stmt-table tbody tr.origination td { background: rgba(91,63,181,0.04); }
+  .stmt-table tbody tr.post-term td { background: rgba(1,4,29,0.03); color: var(--dim); }
+  .empty-cell { color: var(--dim); }
+
+  /* Footer disclaimer */
+  .stmt-footer {
+    padding: 18px 28px 22px 28px;
+    background: var(--card2);
+    color: var(--dim);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .stmt-loading {
+    padding: 60px;
+    text-align: center;
+    color: var(--dim);
+    font-size: 13px;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    @page { size: letter; margin: 0.5in; }
+    body { background: #FFFFFF; }
+    .app-header, .back-link, .stmt-actions, #app-back, #app-logout, .app-header-right { display: none !important; }
+    .main { padding: 0; max-width: none; }
+    .statement {
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .stmt-brand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .stmt-block-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .stmt-date-field input {
+      border: none;
+      padding: 0;
+      background: transparent;
+    }
+    .stmt-section, .stmt-two-col > div { padding-left: 0; padding-right: 0; }
+    .stmt-two-col > div + div { padding-left: 16px; }
+    .stmt-section { break-inside: auto; page-break-inside: auto; }
+    .stmt-block-title, .stmt-section h3 { break-after: avoid; page-break-after: avoid; }
+    .stmt-table thead { display: table-header-group; }
+    .stmt-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .stmt-footer { break-before: avoid; page-break-before: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header" id="app-header">
+  <div class="app-logo">Nectar<span>Sponsor Portal</span></div>
+  <div class="app-header-right" id="app-header-right">
+    <span class="back-link hidden" id="app-back">← All loans</span>
+    <span class="email" id="app-email"></span>
+    <button class="btn" id="app-logout">Log out</button>
+  </div>
+</header>
+
+<!-- ── 1. LOGIN ── -->
+<section id="view-login" class="login-shell hidden">
+  <div class="login-card">
+    <div class="login-title">Sponsor Portal</div>
+    <div class="login-sub">
+      Generate account statements for your Nectar loans. Enter the email on file and we'll send you a one-time login link.
+    </div>
+    <form id="login-form" autocomplete="on">
+      <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+      <button class="btn btn-primary" type="submit" id="login-submit" style="width:100%;padding:10px;">
+        Send login link
+      </button>
+    </form>
+    <div id="login-msg"></div>
+  </div>
+</section>
+
+<!-- ── 2. PICKER ── -->
+<section id="view-picker" class="main hidden">
+  <div class="picker-title">Your loans</div>
+  <div class="picker-sub" id="picker-sub">Select a loan to generate an account statement.</div>
+  <input type="text" id="picker-search" class="picker-search" placeholder="Filter by name or ID…">
+  <table class="picker-table">
+    <thead>
+      <tr>
+        <th>Loan #</th>
+        <th>Entity</th>
+        <th>Status</th>
+        <th style="text-align:right">Advance</th>
+        <th style="text-align:right">Term (mo)</th>
+      </tr>
+    </thead>
+    <tbody id="picker-tbody"></tbody>
+  </table>
+  <div id="picker-empty" class="hidden" style="padding:24px;color:var(--dim);text-align:center;">
+    No loans associated with this email.
+  </div>
+</section>
+
+<!-- ── 3. STATEMENT ── -->
+<section id="view-statement" class="main hidden">
+  <div class="stmt-actions">
+    <button class="btn btn-primary" id="btn-print">Download PDF</button>
+  </div>
+  <div class="statement" id="statement-content">
+    <div class="stmt-loading">Loading statement…</div>
+  </div>
+</section>
+
+<script>
+(function(){
+  "use strict";
+
+  // ─────────────────────────────────────────────────────────────
+  //  Boot — wait for the ES-module createClient to settle on window
+  // ─────────────────────────────────────────────────────────────
+  function whenReady(cb){
+    if (window.supabase && typeof window.supabase.auth === "object") return cb(window.supabase);
+    setTimeout(() => whenReady(cb), 25);
+  }
+
+  whenReady(function(sb){
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+    // ─── Helpers ──────────────────────────────────────────────
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function fmtUSD(n) {
+      if (n === null || n === undefined || isNaN(n)) return '';
+      const num = Number(n);
+      const sign = num < 0 ? '-' : '';
+      const abs = Math.abs(num);
+      return sign + '$' + abs.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    function parseISO(s) {
+      if (!s) return null;
+      const [y,m,d] = String(s).split('-').map(Number);
+      return new Date(y, m-1, d);
+    }
+    function fmtMDY(d) {
+      if (!d) return '';
+      return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    }
+    function fmtMonYear(d) {
+      if (!d) return '';
+      return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    }
+    function localISO(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${dd}`;
+    }
+    function addMonths(d, n) {
+      const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      r.setMonth(r.getMonth() + n);
+      return r;
+    }
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ─── Buyback math (per spec) ───────────────────────────────
+    function computeBuybackSchedule(advance, monthlyPmt, termMonths, lockoutMonths) {
+      const totalPmts = monthlyPmt * termMonths;
+      if (totalPmts < advance * 1.05) {
+        return Array.from({length: termMonths}, (_, i) =>
+          (i + 1) <= lockoutMonths ? null :
+          (i + 1) === termMonths ? 0 : advance
+        );
+      }
+      const f = (r) => {
+        if (Math.abs(r) < 1e-12) return monthlyPmt * termMonths - advance;
+        return monthlyPmt * (1 - Math.pow(1+r, -termMonths)) / r - advance;
+      };
+      let lo = -0.5, hi = 5.0;
+      for (let i = 0; i < 100; i++) {
+        const mid = (lo + hi) / 2;
+        const v = f(mid);
+        if (Math.abs(v) < 1e-6 || (hi - lo) < 1e-10) { lo = hi = mid; break; }
+        if (v > 0) lo = mid; else hi = mid;
+      }
+      const r = (lo + hi) / 2;
+      const schedule = [];
+      let bal = advance;
+      for (let i = 1; i <= termMonths; i++) {
+        bal = bal * (1 + r) - monthlyPmt;
+        if (i === termMonths) bal = 0;
+        schedule.push(i <= lockoutMonths ? null : Math.max(0, Math.round(bal * 100) / 100));
+      }
+      return schedule;
+    }
+
+    function buybackCell(v) {
+      if (v === null || v === undefined) return 'NA';
+      if (v === 0) return '$0.00';
+      return fmtUSD(v);
+    }
+
+    // ─── App state ────────────────────────────────────────────
+    let userEmail = null;
+    let deals = [];
+    let currentStatement = null;
+    let statementDateISO = localISO(new Date());
+
+    // ─── View switching ───────────────────────────────────────
+    function setView(name) {
+      $('#view-login').classList.toggle('hidden', name !== 'login');
+      $('#view-picker').classList.toggle('hidden', name !== 'picker');
+      $('#view-statement').classList.toggle('hidden', name !== 'statement');
+      $('#app-header').classList.toggle('hidden', name === 'login');
+      $('#app-back').classList.toggle('hidden', name !== 'statement');
+    }
+
+    // ─── Login view ────────────────────────────────────────────
+    $('#login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('#login-email').value.trim().toLowerCase();
+      if (!email) return;
+      const submit = $('#login-submit');
+      const msg = $('#login-msg');
+      submit.disabled = true;
+      submit.textContent = 'Sending…';
+      msg.className = '';
+      msg.textContent = '';
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.origin + location.pathname }
+      });
+      submit.disabled = false;
+      submit.textContent = 'Send login link';
+      if (error) {
+        msg.className = 'login-msg error';
+        msg.textContent = error.message || 'Could not send login link. Please try again.';
+      } else {
+        msg.className = 'login-msg success';
+        msg.textContent = `Check your inbox at ${email} for a one-time login link.`;
+      }
+    });
+
+    // ─── Logout / back ─────────────────────────────────────────
+    $('#app-logout').addEventListener('click', async () => {
+      await sb.auth.signOut();
+      // onAuthStateChange will route us back to login
+    });
+    $('#app-back').addEventListener('click', () => {
+      currentStatement = null;
+      setView('picker');
+    });
+
+    // ─── Picker ────────────────────────────────────────────────
+    async function loadPicker() {
+      const tbody = $('#picker-tbody');
+      tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;color:var(--dim);text-align:center;">Loading loans…</td></tr>`;
+      $('#picker-empty').classList.add('hidden');
+
+      const { data, error } = await sb.rpc('get_sponsor_deals');
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;color:var(--red);text-align:center;">${escapeHtml(error.message)}</td></tr>`;
+        return;
+      }
+      deals = (data || []).slice().sort((a,b) => a.deal_id - b.deal_id);
+      renderPicker('');
+      $('#picker-sub').textContent =
+        deals.length === 1
+          ? 'Select your loan to generate an account statement.'
+          : `${deals.length} loans on file. Select one to generate an account statement.`;
+    }
+
+    function renderPicker(filter) {
+      const tbody = $('#picker-tbody');
+      const f = filter.trim().toLowerCase();
+      const rows = deals.filter(d =>
+        !f || String(d.deal_id).includes(f) || (d.name||'').toLowerCase().includes(f)
+      );
+      if (deals.length === 0) {
+        tbody.innerHTML = '';
+        $('#picker-empty').classList.remove('hidden');
+        return;
+      }
+      $('#picker-empty').classList.add('hidden');
+      tbody.innerHTML = rows.map(d => {
+        const status = (d.status || '').toString();
+        const cls = /open/i.test(status) ? 'open'
+                  : /workout|default|delin/i.test(status) ? 'workout'
+                  : 'closed';
+        return `<tr data-id="${d.deal_id}">
+          <td style="font-family:'DM Mono',monospace;">${d.deal_id}</td>
+          <td>${escapeHtml(d.name || '')}</td>
+          <td><span class="pill-status ${cls}">${escapeHtml(status || '—')}</span></td>
+          <td class="num">${d.advance != null ? fmtUSD(d.advance) : ''}</td>
+          <td class="num">${d.term_months ?? ''}</td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="5" style="padding:20px;color:var(--dim);text-align:center;">No loans match "${escapeHtml(filter)}".</td></tr>`;
+      Array.from(tbody.querySelectorAll('tr[data-id]')).forEach(tr => {
+        tr.addEventListener('click', () => selectDeal(Number(tr.dataset.id)));
+      });
+    }
+    $('#picker-search').addEventListener('input', e => renderPicker(e.target.value));
+
+    // ─── Statement ─────────────────────────────────────────────
+    async function selectDeal(dealId) {
+      setView('statement');
+      $('#statement-content').innerHTML = `<div class="stmt-loading">Loading statement…</div>`;
+      statementDateISO = localISO(new Date());
+      const { data, error } = await sb.rpc('get_sponsor_statement', { p_deal_id: dealId });
+      if (error) {
+        $('#statement-content').innerHTML =
+          `<div class="stmt-loading" style="color:var(--red);">${escapeHtml(error.message)}</div>`;
+        return;
+      }
+      if (!data || !data.deal) {
+        $('#statement-content').innerHTML =
+          `<div class="stmt-loading" style="color:var(--red);">Loan not found or access denied.</div>`;
+        return;
+      }
+      currentStatement = data;
+      renderStatement();
+    }
+
+    // Derive "Regular Monthly Payment" = mode of sched_amt > 0 in dpd
+    // (excludes balloon row which appears only once with a much larger amount).
+    function deriveMonthlyPmt(dpd) {
+      const counts = new Map();
+      for (const r of dpd) {
+        const v = Number(r.sched_amt);
+        if (!(v > 0)) continue;
+        counts.set(v, (counts.get(v) || 0) + 1);
+      }
+      let best = 0, bestN = 0;
+      for (const [v, n] of counts) {
+        if (n > bestN || (n === bestN && v < best)) { best = v; bestN = n; }
+      }
+      return best;
+    }
+
+    function renderStatement() {
+      const stmt = currentStatement;
+      const deal = stmt.deal;
+      const dpd = (stmt.dpd || []).slice().sort((a,b) =>
+        String(a.due_date).localeCompare(String(b.due_date)));
+
+      const advance = Number(deal.advance) || 0;
+      const term = Number(deal.term_months) || 0;
+      const lockout = (deal.buyback_lockout_months ?? 6);
+      const monthlyPmt = deriveMonthlyPmt(dpd);
+
+      // Buyback schedule (length = term)
+      const buyback = computeBuybackSchedule(advance, monthlyPmt, term, lockout);
+
+      // Scheduled rows (in date order) — drives payment schedule + maturity
+      const schedRows = dpd.filter(r => Number(r.sched_amt) > 0);
+      const maturity = schedRows.length ? parseISO(schedRows[schedRows.length-1].due_date) : null;
+      const firstDue = schedRows.length ? parseISO(schedRows[0].due_date) : null;
+
+      const html = `
+        <div class="stmt-brand">
+          <div class="wordmark">Nectar</div>
+          <div class="url">www.usenectar.com</div>
+        </div>
+
+        <div class="stmt-title-row">
+          <div>
+            <div class="stmt-entity">${escapeHtml(deal.name || '')}</div>
+            <div class="stmt-loan-num" style="margin-top:6px;">Loan #${deal.id}</div>
+          </div>
+          <div class="stmt-date-field">
+            <label for="stmt-date-input">Statement Date</label>
+            <input type="date" id="stmt-date-input" value="${statementDateISO}">
+          </div>
+        </div>
+
+        <div class="stmt-two-col">
+          <div id="stmt-overview"></div>
+          <div id="stmt-account"></div>
+        </div>
+
+        <div class="stmt-section">
+          <div class="stmt-block-title">Activity</div>
+          <table class="stmt-table" id="stmt-activity">
+            <thead><tr>
+              <th>Date</th><th>Transaction</th>
+              <th class="num">Charge</th><th class="num">Payment</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="stmt-section">
+          <div class="stmt-block-title">Payment Schedule</div>
+          <table class="stmt-table" id="stmt-schedule">
+            <thead><tr>
+              <th>Payment Date</th>
+              <th class="num">Payment Amount</th>
+              <th class="num">Buyback Option</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="stmt-footer">
+          This statement is provided for informational purposes only as of the date of receipt. It does not represent a buyback or payoff amount, nor does it limit the total amount owed in the event of default. Future payments or account activity may affect the accuracy of the information contained herein. Accordingly, this statement should be considered outdated within seven (7) days from the date of receipt.
+          <br><br>
+          To request an official buyback amount, please contact servicing@usenectar.com.
+        </div>
+      `;
+      $('#statement-content').innerHTML = html;
+
+      // Wire date input
+      $('#stmt-date-input').addEventListener('change', (e) => {
+        statementDateISO = e.target.value || localISO(new Date());
+        renderOverview(deal, dpd, monthlyPmt);
+        renderActivity(dpd);
+      });
+
+      // Account info (static-ish — only Statement Date varies)
+      renderAccount(deal, maturity);
+      renderOverview(deal, dpd, monthlyPmt);
+      renderActivity(dpd);
+      renderSchedule(advance, firstDue, schedRows, buyback, maturity);
+    }
+
+    function renderAccount(deal, maturity) {
+      $('#stmt-account').innerHTML = `
+        <div class="stmt-block-title">Account Information</div>
+        <div class="kv">
+          <div class="k">Statement Date</div>
+          <div class="v" id="kv-stmt-date">${fmtMDY(parseISO(statementDateISO))}</div>
+          <div class="k">Loan Status</div>
+          <div class="v">${escapeHtml(deal.status || '—')}</div>
+          <div class="k">Maturity Date</div>
+          <div class="v">${maturity ? fmtMDY(maturity) : '—'}</div>
+        </div>
+      `;
+    }
+
+    function renderOverview(deal, dpd, monthlyPmt) {
+      const stmtDate = parseISO(statementDateISO);
+      const stmtMonthStart = new Date(stmtDate.getFullYear(), stmtDate.getMonth(), 1);
+      const stmtMonthEnd = new Date(stmtDate.getFullYear(), stmtDate.getMonth()+1, 0);
+
+      // Overdue = sum of unpaid scheduled amounts due BEFORE the statement month
+      let overdue = 0;
+      for (const r of dpd) {
+        const dd = parseISO(r.due_date);
+        if (!dd) continue;
+        if (dd < stmtMonthStart) {
+          const unpaid = (Number(r.sched_amt) || 0) - (Number(r.actual_amt) || 0);
+          if (unpaid > 0.01) overdue += unpaid;
+        }
+      }
+      // Current-month scheduled
+      let currentSched = 0;
+      for (const r of dpd) {
+        const dd = parseISO(r.due_date);
+        if (!dd) continue;
+        if (dd >= stmtMonthStart && dd <= stmtMonthEnd) {
+          currentSched += Number(r.sched_amt) || 0;
+        }
+      }
+      const totalDue = currentSched + overdue;
+
+      // Update statement-date echo in account section
+      const echo = $('#kv-stmt-date');
+      if (echo) echo.textContent = fmtMDY(stmtDate);
+
+      $('#stmt-overview').innerHTML = `
+        <div class="stmt-block-title">Payment Overview</div>
+        <div class="kv">
+          <div class="k">Regular Monthly Payment</div>
+          <div class="v">${fmtUSD(monthlyPmt)}</div>
+          <div class="k">Fees</div>
+          <div class="v">${fmtUSD(0)}</div>
+          <div class="k">Overdue Payments</div>
+          <div class="v">${fmtUSD(overdue)}</div>
+          <div class="k">Total Due ${fmtMonYear(stmtDate)}</div>
+          <div class="v total">${fmtUSD(totalDue)}</div>
+        </div>
+      `;
+    }
+
+    function renderActivity(dpd) {
+      const stmtDate = parseISO(statementDateISO);
+      // Activity = paid rows on or before statement date
+      const rows = dpd
+        .filter(r => Number(r.actual_amt) > 0 && parseISO(r.due_date) <= stmtDate)
+        .sort((a,b) => String(a.due_date).localeCompare(String(b.due_date)));
+      const tbody = $('#stmt-activity tbody');
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:14px;">No payments recorded as of ${fmtMDY(stmtDate)}.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${fmtMDY(parseISO(r.due_date))}</td>
+          <td>Payment Received</td>
+          <td class="num"><span class="empty-cell">—</span></td>
+          <td class="num">${fmtUSD(r.actual_amt)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderSchedule(advance, firstDue, schedRows, buyback, maturity) {
+      const tbody = $('#stmt-schedule tbody');
+      const rows = [];
+
+      // Origination row
+      if (firstDue) {
+        const origDate = addMonths(firstDue, -1);
+        rows.push(`<tr class="origination">
+          <td>${fmtMDY(origDate)}</td>
+          <td class="num">${fmtUSD(-advance)}</td>
+          <td class="num"><span class="empty-cell">—</span></td>
+        </tr>`);
+      }
+
+      // One row per scheduled payment
+      schedRows.forEach((r, i) => {
+        const bv = buyback ? buyback[i] : undefined;
+        rows.push(`<tr>
+          <td>${fmtMDY(parseISO(r.due_date))}</td>
+          <td class="num">${fmtUSD(r.sched_amt)}</td>
+          <td class="num">${buybackCell(bv)}</td>
+        </tr>`);
+      });
+
+      // Post-term row (one month after maturity, $0.00, NA)
+      if (maturity) {
+        const postDate = addMonths(maturity, 1);
+        rows.push(`<tr class="post-term">
+          <td>${fmtMDY(postDate)}</td>
+          <td class="num">${fmtUSD(0)}</td>
+          <td class="num">NA</td>
+        </tr>`);
+      }
+
+      tbody.innerHTML = rows.join('');
+    }
+
+    // ─── Print ─────────────────────────────────────────────────
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'btn-print') {
+        window.print();
+      }
+    });
+
+    // ─── Auth state routing ────────────────────────────────────
+    function handleSession(session) {
+      if (session && session.user) {
+        userEmail = session.user.email;
+        $('#app-email').textContent = userEmail;
+        // If we're not currently on a statement, show the picker
+        const onStatement = !$('#view-statement').classList.contains('hidden');
+        if (!onStatement) {
+          setView('picker');
+          loadPicker();
+        }
+      } else {
+        userEmail = null;
+        currentStatement = null;
+        deals = [];
+        $('#app-email').textContent = '';
+        setView('login');
+      }
+    }
+
+    sb.auth.getSession().then(({ data }) => handleSession(data.session));
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+        handleSession(session);
+      } else if (event === 'SIGNED_OUT') {
+        handleSession(null);
+      }
+    });
+
+  });
+})();
+</script>
+</body>
+</html>
