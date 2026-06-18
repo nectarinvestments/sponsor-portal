@@ -537,18 +537,22 @@
     }
 
     // ─── Buyback math (per spec) ───────────────────────────────
-    function computeBuybackSchedule(advance, monthlyPmt, termMonths, lockoutMonths) {
+    // `ioInterestCharge` (optional) overrides `monthlyPmt` as the per-month
+    // interest used in the IO+balloon branch. Recovers contractual precision
+    // when monthlyPmt is rounded in storage.
+    function computeBuybackSchedule(advance, monthlyPmt, termMonths, lockoutMonths, ioInterestCharge) {
       const totalPmts = monthlyPmt * termMonths;
       if (totalPmts < advance * 1.05) {
         // IO+balloon: floor at advance × 1.01 (1% prepayment premium), plus
         // max(0, term-2-i) months of interest. Snaps to $0 at maturity.
         const floor = advance * 1.01;
+        const charge = (ioInterestCharge != null && ioInterestCharge > 0) ? ioInterestCharge : monthlyPmt;
         return Array.from({length: termMonths}, (_, idx) => {
           const i = idx + 1;
           if (i <= lockoutMonths) return null;
           if (i === termMonths) return 0;
           const extra = Math.max(0, termMonths - 2 - i);
-          return Math.round((floor + extra * monthlyPmt) * 100) / 100;
+          return Math.round((floor + extra * charge) * 100) / 100;
         });
       }
       const f = (r) => {
@@ -727,8 +731,19 @@
       const lockout = (deal.buyback_lockout_months ?? 6);
       const monthlyPmt = deriveMonthlyPmt(dpd);
 
+      // For IO+balloon buyback precision: recover the contractual per-month
+      // interest charge by summing all scheduled payments minus advance,
+      // then snapping that total to the nearest dollar when within
+      // `term × $0.01` (5× the cumulative cent-rounding error bound).
+      const totalSched = dpd.reduce((s,r) => s + (Number(r.sched_amt)||0), 0);
+      const rawInt = totalSched - advance;
+      const dollarSnap = Math.round(rawInt);
+      const snapTol = Math.max(0.10, term * 0.01);
+      const totalInt = (rawInt > 0 && Math.abs(rawInt - dollarSnap) < snapTol) ? dollarSnap : rawInt;
+      const ioInterestCharge = (term > 0 && totalInt > 0) ? totalInt / term : monthlyPmt;
+
       // Buyback schedule (length = term)
-      const buyback = computeBuybackSchedule(advance, monthlyPmt, term, lockout);
+      const buyback = computeBuybackSchedule(advance, monthlyPmt, term, lockout, ioInterestCharge);
 
       // Scheduled rows (in date order) — drives payment schedule + maturity
       const schedRows = dpd.filter(r => Number(r.sched_amt) > 0);
