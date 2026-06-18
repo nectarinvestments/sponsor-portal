@@ -377,6 +377,27 @@
   .stmt-table tbody tr.post-term td { background: rgba(1,4,29,0.03); color: var(--dim); }
   .empty-cell { color: var(--dim); }
 
+  /* Missed-payment indicators — colored pill carries the meaning,
+     the word "MISSED" carries it again for B&W print. */
+  .missed-tag {
+    display: inline-block;
+    font-family: 'Manrope', sans-serif;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: #C0392B;
+    color: #FFFFFF;
+    margin-right: 8px;
+    vertical-align: middle;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stmt-table tbody tr.row-missed td { color: #8E2E22; }
+  .kv .v.missed { color: #C0392B; font-weight: 600; }
+
   /* Footer disclaimer */
   .stmt-footer {
     padding: 18px 28px 22px 28px;
@@ -908,6 +929,7 @@
         statementDateISO = e.target.value || localISO(new Date());
         renderOverview(deal, dpd, monthlyPmt);
         renderActivity(dpd);
+        renderSchedule(advance, firstDue, schedRows, buyback, maturity);
       });
 
       // Account info (static-ish — only Statement Date varies)
@@ -931,19 +953,29 @@
       `;
     }
 
+    // A scheduled row is "missed" when: sched_amt > 0, actual_amt === 0,
+    // and due_date < the user-selected statement date. Strict actual=0 per
+    // spec; partial payments are not flagged.
+    function isMissed(r, stmtDate) {
+      const dd = parseISO(r.due_date);
+      if (!dd) return false;
+      const sched = Number(r.sched_amt) || 0;
+      const actual = Number(r.actual_amt) || 0;
+      return sched > 0 && actual === 0 && dd < stmtDate;
+    }
+
     function renderOverview(deal, dpd, monthlyPmt) {
       const stmtDate = parseISO(statementDateISO);
       const stmtMonthStart = new Date(stmtDate.getFullYear(), stmtDate.getMonth(), 1);
       const stmtMonthEnd = new Date(stmtDate.getFullYear(), stmtDate.getMonth()+1, 0);
 
-      // Overdue = sum of unpaid scheduled amounts due BEFORE the statement month
-      let overdue = 0;
+      // Missed = past-due scheduled rows with actual = 0
+      let missedCount = 0;
+      let missedSum = 0;
       for (const r of dpd) {
-        const dd = parseISO(r.due_date);
-        if (!dd) continue;
-        if (dd < stmtMonthStart) {
-          const unpaid = (Number(r.sched_amt) || 0) - (Number(r.actual_amt) || 0);
-          if (unpaid > 0.01) overdue += unpaid;
+        if (isMissed(r, stmtDate)) {
+          missedCount++;
+          missedSum += Number(r.sched_amt) || 0;
         }
       }
       // Current-month scheduled
@@ -955,11 +987,16 @@
           currentSched += Number(r.sched_amt) || 0;
         }
       }
-      const totalDue = currentSched + overdue;
+      const totalDue = currentSched + missedSum;
 
       // Update statement-date echo in account section
       const echo = $('#kv-stmt-date');
       if (echo) echo.textContent = fmtMDY(stmtDate);
+
+      const missedLabel = missedCount === 0
+        ? 'None'
+        : `${missedCount} (${fmtUSD(missedSum)})`;
+      const missedClass = missedCount > 0 ? 'v missed' : 'v';
 
       $('#stmt-overview').innerHTML = `
         <div class="stmt-block-title">Payment Overview</div>
@@ -968,8 +1005,8 @@
           <div class="v">${fmtUSD(monthlyPmt)}</div>
           <div class="k">Fees</div>
           <div class="v">${fmtUSD(0)}</div>
-          <div class="k">Overdue Payments</div>
-          <div class="v">${fmtUSD(overdue)}</div>
+          <div class="k">Missed Payments</div>
+          <div class="${missedClass}">${missedLabel}</div>
           <div class="k">Total Due ${fmtMonYear(stmtDate)}</div>
           <div class="v total">${fmtUSD(totalDue)}</div>
         </div>
@@ -978,23 +1015,41 @@
 
     function renderActivity(dpd) {
       const stmtDate = parseISO(statementDateISO);
-      // Activity = paid rows on or before statement date
-      const rows = dpd
-        .filter(r => Number(r.actual_amt) > 0 && parseISO(r.due_date) <= stmtDate)
-        .sort((a,b) => String(a.due_date).localeCompare(String(b.due_date)));
+      // Build a combined chronological feed of received + missed events
+      const events = [];
+      for (const r of dpd) {
+        const dd = parseISO(r.due_date);
+        if (!dd) continue;
+        const actual = Number(r.actual_amt) || 0;
+        if (actual > 0 && dd <= stmtDate) {
+          events.push({ date: dd, kind: 'received', amount: actual });
+        }
+        if (isMissed(r, stmtDate)) {
+          events.push({ date: dd, kind: 'missed', amount: Number(r.sched_amt) || 0 });
+        }
+      }
+      events.sort((a,b) => a.date - b.date);
       const tbody = $('#stmt-activity tbody');
-      if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:14px;">No payments recorded as of ${fmtMDY(stmtDate)}.</td></tr>`;
+      if (!events.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:14px;">No payment activity as of ${fmtMDY(stmtDate)}.</td></tr>`;
         return;
       }
-      tbody.innerHTML = rows.map(r => `
-        <tr>
-          <td>${fmtMDY(parseISO(r.due_date))}</td>
-          <td>Payment Received</td>
+      tbody.innerHTML = events.map(e => {
+        if (e.kind === 'received') {
+          return `<tr>
+            <td>${fmtMDY(e.date)}</td>
+            <td>Payment Received</td>
+            <td class="num"><span class="empty-cell">—</span></td>
+            <td class="num">${fmtUSD(e.amount)}</td>
+          </tr>`;
+        }
+        return `<tr class="row-missed">
+          <td><span class="missed-tag">Missed</span>${fmtMDY(e.date)}</td>
+          <td>Payment Missed</td>
+          <td class="num">${fmtUSD(e.amount)}</td>
           <td class="num"><span class="empty-cell">—</span></td>
-          <td class="num">${fmtUSD(r.actual_amt)}</td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
     }
 
     function renderSchedule(advance, firstDue, schedRows, buyback, maturity) {
@@ -1011,11 +1066,18 @@
         </tr>`);
       }
 
-      // One row per scheduled payment
+      // One row per scheduled payment (with a Missed pill on past-due unpaid rows)
+      const stmtDate = parseISO(statementDateISO);
       schedRows.forEach((r, i) => {
         const bv = buyback ? buyback[i] : undefined;
-        rows.push(`<tr>
-          <td>${fmtMDY(parseISO(r.due_date))}</td>
+        const dd = parseISO(r.due_date);
+        const missed = isMissed(r, stmtDate);
+        const cls = missed ? ' class="row-missed"' : '';
+        const dateCell = missed
+          ? `<span class="missed-tag">Missed</span>${fmtMDY(dd)}`
+          : fmtMDY(dd);
+        rows.push(`<tr${cls}>
+          <td>${dateCell}</td>
           <td class="num">${fmtUSD(r.sched_amt)}</td>
           <td class="num">${buybackCell(bv)}</td>
         </tr>`);
