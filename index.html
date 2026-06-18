@@ -393,11 +393,84 @@
     font-size: 13px;
   }
 
+  /* ── IMPERSONATION ── */
+  .impersonation-banner {
+    background: #FEF6E1;
+    border-bottom: 1px solid rgba(214, 137, 16, 0.55);
+    color: #6B4915;
+    padding: 10px 32px;
+    position: sticky;
+    top: 0;
+    z-index: 110;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12.5px;
+    gap: 16px;
+  }
+  .impersonation-banner .ib-label {
+    font-family: 'DM Mono', monospace;
+  }
+  .impersonation-banner .ib-label strong { color: #6B4915; font-weight: 600; }
+  .impersonation-banner .ib-tag {
+    color: rgba(107, 73, 21, 0.65);
+    margin-left: 4px;
+  }
+  .impersonation-banner button {
+    padding: 5px 12px;
+    font-size: 11px;
+    background: #FFFFFF;
+    border: 1px solid #D68910;
+    color: #6B4915;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 500;
+  }
+  .impersonation-banner button:hover {
+    background: #D68910;
+    color: #FFFFFF;
+  }
+  /* When the banner is visible we drop app-header stickiness so the two
+     don't fight for top:0; the header still appears above all content. */
+  body.impersonating .app-header { position: relative; }
+
+  .impersonation-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 18px 0;
+    padding: 10px 14px;
+    background: #FEF6E1;
+    border: 1px solid rgba(214, 137, 16, 0.30);
+    border-radius: 6px;
+  }
+  .impersonation-controls label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6B4915;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .impersonation-controls select {
+    flex: 1;
+    max-width: 440px;
+    padding: 7px 28px 7px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #FFFFFF;
+    color: var(--text);
+    font-family: 'Manrope', sans-serif;
+    font-size: 12.5px;
+  }
+
   /* ── PRINT ── */
   @media print {
     @page { size: letter; margin: 0.5in; }
     body { background: #FFFFFF; }
-    .app-header, .back-link, .stmt-actions, #app-back, #app-logout, .app-header-right { display: none !important; }
+    .app-header, .back-link, .stmt-actions, #app-back, #app-logout, .app-header-right,
+    #impersonation-banner, #impersonation-controls { display: none !important; }
     .main { padding: 0; max-width: none; }
     .statement {
       border: none;
@@ -422,6 +495,11 @@
 </style>
 </head>
 <body>
+
+<div id="impersonation-banner" class="impersonation-banner hidden">
+  <span class="ib-label">Viewing as: <strong id="ib-email"></strong><span class="ib-tag">(admin mode)</span></span>
+  <button type="button" id="ib-return">Return to my view</button>
+</div>
 
 <header class="app-header" id="app-header">
   <div class="app-logo">Nectar<span>Sponsor Portal</span></div>
@@ -453,6 +531,12 @@
 <section id="view-picker" class="main hidden">
   <div class="picker-title">Your loans</div>
   <div class="picker-sub" id="picker-sub">Select a loan to generate an account statement.</div>
+  <div id="impersonation-controls" class="impersonation-controls hidden">
+    <label for="impersonation-select">View as sponsor:</label>
+    <select id="impersonation-select">
+      <option value="">— My account —</option>
+    </select>
+  </div>
   <input type="text" id="picker-search" class="picker-search" placeholder="Filter by name or ID…">
   <table class="picker-table">
     <thead>
@@ -496,6 +580,11 @@
   whenReady(function(sb){
     const $ = sel => document.querySelector(sel);
     const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+    // Master emails see the admin impersonation UI. Backend RPCs are the
+    // actual security boundary — this list only gates whether to render
+    // the dropdown for a smoother experience.
+    const MASTER_EMAILS = ['lilato@usenectar.com'];
 
     // ─── Helpers ──────────────────────────────────────────────
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -588,6 +677,9 @@
     let deals = [];
     let currentStatement = null;
     let statementDateISO = localISO(new Date());
+    let isMaster = false;
+    let sponsorEmails = null;   // {email, deal_count}[] or null
+    let viewingAs = null;       // null = own view; string email = impersonating
 
     // ─── View switching ───────────────────────────────────────
     function setView(name) {
@@ -640,17 +732,23 @@
       tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;color:var(--dim);text-align:center;">Loading loans…</td></tr>`;
       $('#picker-empty').classList.add('hidden');
 
-      const { data, error } = await sb.rpc('get_sponsor_deals');
+      const { data, error } = viewingAs
+        ? await sb.rpc('get_sponsor_deals_as', { p_email: viewingAs })
+        : await sb.rpc('get_sponsor_deals');
       if (error) {
         tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;color:var(--red);text-align:center;">${escapeHtml(error.message)}</td></tr>`;
         return;
       }
       deals = (data || []).slice().sort((a,b) => a.deal_id - b.deal_id);
+      $('#picker-empty').textContent = viewingAs
+        ? 'No deals found for this sponsor.'
+        : 'No loans associated with this email.';
       renderPicker('');
-      $('#picker-sub').textContent =
-        deals.length === 1
-          ? 'Select your loan to generate an account statement.'
-          : `${deals.length} loans on file. Select one to generate an account statement.`;
+      $('#picker-sub').textContent = viewingAs
+        ? `Viewing all ${deals.length} deal${deals.length === 1 ? '' : 's'} for ${viewingAs}.`
+        : (deals.length === 1
+            ? 'Select your loan to generate an account statement.'
+            : `${deals.length} loans on file. Select one to generate an account statement.`);
     }
 
     function renderPicker(filter) {
@@ -689,7 +787,9 @@
       setView('statement');
       $('#statement-content').innerHTML = `<div class="stmt-loading">Loading statement…</div>`;
       statementDateISO = localISO(new Date());
-      const { data, error } = await sb.rpc('get_sponsor_statement', { p_deal_id: dealId });
+      const { data, error } = viewingAs
+        ? await sb.rpc('get_sponsor_statement_as', { p_deal_id: dealId, p_email: viewingAs })
+        : await sb.rpc('get_sponsor_statement', { p_deal_id: dealId });
       if (error) {
         $('#statement-content').innerHTML =
           `<div class="stmt-loading" style="color:var(--red);">${escapeHtml(error.message)}</div>`;
@@ -941,11 +1041,70 @@
       }
     });
 
+    // ─── Impersonation (master admins only) ────────────────────
+    async function loadSponsorEmails() {
+      if (!isMaster || sponsorEmails) return;
+      const { data, error } = await sb.rpc('get_sponsor_emails');
+      if (error) {
+        console.warn('loadSponsorEmails:', error.message);
+        sponsorEmails = [];
+        return;
+      }
+      sponsorEmails = (data || []).slice().sort((a,b) =>
+        (a.email||'').localeCompare(b.email||''));
+    }
+
+    function renderImpersonationDropdown() {
+      const wrap = $('#impersonation-controls');
+      if (!isMaster) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      const select = $('#impersonation-select');
+      const myOpt = `<option value="">— My account (${escapeHtml(userEmail || '')}) —</option>`;
+      const otherOpts = (sponsorEmails || []).map(e =>
+        `<option value="${escapeHtml(e.email)}">${escapeHtml(e.email)} (${e.deal_count} deal${e.deal_count === 1 ? '' : 's'})</option>`
+      ).join('');
+      select.innerHTML = myOpt + otherOpts;
+      select.value = viewingAs || '';
+    }
+
+    function updateImpersonationBanner() {
+      const banner = $('#impersonation-banner');
+      if (viewingAs) {
+        $('#ib-email').textContent = viewingAs;
+        banner.classList.remove('hidden');
+        document.body.classList.add('impersonating');
+      } else {
+        banner.classList.add('hidden');
+        document.body.classList.remove('impersonating');
+      }
+    }
+
+    $('#impersonation-select').addEventListener('change', (e) => {
+      viewingAs = e.target.value || null;
+      currentStatement = null;
+      updateImpersonationBanner();
+      setView('picker');
+      loadPicker();
+    });
+    $('#ib-return').addEventListener('click', () => {
+      viewingAs = null;
+      currentStatement = null;
+      const sel = $('#impersonation-select');
+      if (sel) sel.value = '';
+      updateImpersonationBanner();
+      setView('picker');
+      loadPicker();
+    });
+
     // ─── Auth state routing ────────────────────────────────────
     function handleSession(session) {
       if (session && session.user) {
         userEmail = session.user.email;
         $('#app-email').textContent = userEmail;
+        isMaster = MASTER_EMAILS.includes((userEmail || '').toLowerCase());
+        renderImpersonationDropdown();
+        updateImpersonationBanner();
+        if (isMaster) loadSponsorEmails().then(renderImpersonationDropdown);
         // If we're not currently on a statement, show the picker
         const onStatement = !$('#view-statement').classList.contains('hidden');
         if (!onStatement) {
@@ -956,7 +1115,12 @@
         userEmail = null;
         currentStatement = null;
         deals = [];
+        isMaster = false;
+        sponsorEmails = null;
+        viewingAs = null;
         $('#app-email').textContent = '';
+        renderImpersonationDropdown();
+        updateImpersonationBanner();
         setView('login');
       }
     }

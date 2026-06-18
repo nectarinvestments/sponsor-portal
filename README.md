@@ -32,6 +32,17 @@ GitHub Pages serves the site at https://nectarinvestments.github.io/sponsor-port
   3. **`view-statement`** — statement page for the selected loan
 - `supabase.auth.onAuthStateChange` is the single source of truth — `SIGNED_IN` routes to the picker, `SIGNED_OUT` to login.
 
+## Admin impersonation
+
+Emails listed in the `MASTER_EMAILS` constant (top of the `<script>` block) see an extra "View as sponsor:" dropdown above the picker. Selecting a sponsor:
+
+- Calls `get_sponsor_deals_as(p_email)` instead of `get_sponsor_deals()` — returns **all** statuses (Open / Closed / Workout), not just Open
+- Calls `get_sponsor_statement_as(p_deal_id, p_email)` instead of `get_sponsor_statement(p_deal_id)`
+- Shows a sticky amber banner — "Viewing as: <email> (admin mode)" with a "Return to my view" button. The banner is hidden by `@media print` so it does not appear on the PDF
+- Populates from `get_sponsor_emails()` (returns `[{email, deal_count}]`)
+
+All three `_as` RPCs are server-gated to master admins — calling them as a non-master returns nothing, so the frontend list is purely a UX convenience. Non-master users never see the dropdown or banner.
+
 ## Statement layout
 
 Matches the existing PDF template the servicing team uses (Walker's spreadsheet):
