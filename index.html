@@ -540,10 +540,16 @@
     function computeBuybackSchedule(advance, monthlyPmt, termMonths, lockoutMonths) {
       const totalPmts = monthlyPmt * termMonths;
       if (totalPmts < advance * 1.05) {
-        return Array.from({length: termMonths}, (_, i) =>
-          (i + 1) <= lockoutMonths ? null :
-          (i + 1) === termMonths ? 0 : advance
-        );
+        // IO+balloon: floor at advance × 1.01 (1% prepayment premium), plus
+        // max(0, term-2-i) months of interest. Snaps to $0 at maturity.
+        const floor = advance * 1.01;
+        return Array.from({length: termMonths}, (_, idx) => {
+          const i = idx + 1;
+          if (i <= lockoutMonths) return null;
+          if (i === termMonths) return 0;
+          const extra = Math.max(0, termMonths - 2 - i);
+          return Math.round((floor + extra * monthlyPmt) * 100) / 100;
+        });
       }
       const f = (r) => {
         if (Math.abs(r) < 1e-12) return monthlyPmt * termMonths - advance;

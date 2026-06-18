@@ -47,7 +47,7 @@ Matches the existing PDF template the servicing team uses (Walker's spreadsheet)
 
 `computeBuybackSchedule(advance, monthlyPmt, termMonths, lockoutMonths)` (in `index.html`) returns an array of length `termMonths` whose `i`-th entry is the buyback amount after payment `i+1`:
 
-- If `monthlyPmt * termMonths < advance * 1.05` → the deal is IO+balloon. Returns `advance` for non-locked months and `0` at maturity.
+- If `monthlyPmt * termMonths < advance * 1.05` → the deal is IO+balloon. Returns `advance × 1.01 + max(0, term - 2 - i) × monthlyPmt` for unlocked months (floor = 1% prepayment premium plus interest charges through the penultimate month), and `$0` at maturity.
 - Otherwise → solves for the implied periodic rate by bisection, then amortizes.
 - Months `1..lockoutMonths` are `null` (rendered as `NA`).
 - `buyback_lockout_months` is per-deal (defaults to 6) and is returned by `get_sponsor_statement`.
