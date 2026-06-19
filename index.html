@@ -881,6 +881,11 @@
         String(a.due_date).localeCompare(String(b.due_date)));
       const payments = stmt.payments || [];
 
+      // Statement date can never be in the future — clamp leftover state
+      // before rendering so the input and downstream calculations agree.
+      const todayISO_str = localISO(new Date());
+      if (!statementDateISO || statementDateISO > todayISO_str) statementDateISO = todayISO_str;
+
       const advance = Number(deal.advance) || 0;
       const term = Number(deal.term_months) || 0;
       const lockout = (deal.buyback_lockout_months ?? 6);
@@ -918,7 +923,7 @@
           </div>
           <div class="stmt-date-field">
             <label for="stmt-date-input">Statement Date</label>
-            <input type="date" id="stmt-date-input" value="${statementDateISO}">
+            <input type="date" id="stmt-date-input" value="${statementDateISO}" max="${todayISO_str}">
           </div>
         </div>
 
@@ -960,7 +965,12 @@
 
       // Wire date input
       $('#stmt-date-input').addEventListener('change', (e) => {
-        statementDateISO = e.target.value || localISO(new Date());
+        // `max` on the input handles the picker UI; the typed/pasted path
+        // can still produce a future value, so clamp defensively here too.
+        const today = localISO(new Date());
+        let v = e.target.value || today;
+        if (v > today) { v = today; e.target.value = v; }
+        statementDateISO = v;
         renderOverview(deal, dpd, monthlyPmt);
         renderActivity(dpd, payments);
         renderSchedule(advance, firstDue, schedRows, buyback, maturity);
@@ -987,15 +997,17 @@
       `;
     }
 
-    // A scheduled row is "missed" when: sched_amt > 0, actual_amt === 0,
-    // and due_date < the user-selected statement date. Strict actual=0 per
+    // A scheduled row is "missed" only after its due MONTH has fully closed
+    // relative to the user-selected statement date. A payment due Jun 9 isn't
+    // missed on a Jun 19 statement — June isn't over yet. Strict actual=0 per
     // spec; partial payments are not flagged.
+    const monthStart = d => new Date(d.getFullYear(), d.getMonth(), 1);
     function isMissed(r, stmtDate) {
       const dd = parseISO(r.due_date);
       if (!dd) return false;
       const sched = Number(r.sched_amt) || 0;
       const actual = Number(r.actual_amt) || 0;
-      return sched > 0 && actual === 0 && dd < stmtDate;
+      return sched > 0 && actual === 0 && monthStart(dd) < monthStart(stmtDate);
     }
 
     function renderOverview(deal, dpd, monthlyPmt) {
