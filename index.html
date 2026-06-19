@@ -399,6 +399,8 @@
   .kv .v.missed { color: #C0392B; font-weight: 600; }
   /* Negative balances render in red; same hue as missed text. */
   .balance-neg { color: #C0392B; }
+  /* Balances above one full monthly payment render in green. */
+  .balance-pos { color: var(--green); font-weight: 600; }
 
   /* Reserves method gets a subtle amber tag — distinct from cash methods. */
   .method-reserves {
@@ -1070,9 +1072,13 @@
         }
         // Floor penny-rounding negatives (-$1 < v < 0) to $0; only display
         // a real drawdown ( v < -$1, e.g. Cole Gardens 1199 at -$630) in red.
+        // Highlight in green when the balance covers more than one monthly
+        // payment of cushion.
         const meaningfullyNegative = currentReserve < -1;
         const displayReserve = meaningfullyNegative ? currentReserve : Math.max(0, currentReserve);
-        const cls = meaningfullyNegative ? 'v balance-neg' : 'v';
+        let cls = 'v';
+        if (meaningfullyNegative) cls = 'v balance-neg';
+        else if (monthlyPmt > 0 && displayReserve > monthlyPmt) cls = 'v balance-pos';
         reserveLine = `<div class="k">Current Reserve Balance</div>
                        <div class="${cls}">${fmtUSD(displayReserve)}</div>`;
       }
