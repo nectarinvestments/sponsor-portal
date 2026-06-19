@@ -1068,9 +1068,13 @@
             if (Number.isFinite(b)) currentReserve = b;
           }
         }
-        const cls = currentReserve < 0 ? 'v balance-neg' : 'v';
+        // Floor penny-rounding negatives (-$1 < v < 0) to $0; only display
+        // a real drawdown ( v < -$1, e.g. Cole Gardens 1199 at -$630) in red.
+        const meaningfullyNegative = currentReserve < -1;
+        const displayReserve = meaningfullyNegative ? currentReserve : Math.max(0, currentReserve);
+        const cls = meaningfullyNegative ? 'v balance-neg' : 'v';
         reserveLine = `<div class="k">Current Reserve Balance</div>
-                       <div class="${cls}">${fmtUSD(currentReserve)}</div>`;
+                       <div class="${cls}">${fmtUSD(displayReserve)}</div>`;
       }
 
       $('#stmt-overview').innerHTML = `
