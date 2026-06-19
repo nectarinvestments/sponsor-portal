@@ -398,6 +398,20 @@
   .stmt-table tbody tr.row-missed td { color: #8E2E22; }
   .kv .v.missed { color: #C0392B; font-weight: 600; }
 
+  /* Reserves method gets a subtle amber tag — distinct from cash methods. */
+  .method-reserves {
+    display: inline-block;
+    font-style: italic;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(214,137,16,0.12);
+    color: #6B4915;
+    border: 1px solid rgba(214,137,16,0.40);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   /* Footer disclaimer */
   .stmt-footer {
     padding: 18px 28px 22px 28px;
@@ -626,6 +640,12 @@
       if (!d) return '';
       return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
     }
+    function fmtMDYSlash(d) {
+      if (!d) return '';
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      return `${mm}/${dd}/${d.getFullYear()}`;
+    }
     function fmtMonYear(d) {
       if (!d) return '';
       return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
@@ -822,6 +842,19 @@
         return;
       }
       currentStatement = data;
+
+      // Second call: per-payment activity (method, type, gross amount).
+      // Failure is non-fatal — the rest of the statement still renders.
+      const pmtsResult = viewingAs
+        ? await sb.rpc('get_sponsor_payments_as', { p_deal_id: dealId, p_email: viewingAs })
+        : await sb.rpc('get_sponsor_payments', { p_deal_id: dealId });
+      if (pmtsResult.error) {
+        console.warn('get_sponsor_payments:', pmtsResult.error.message);
+        currentStatement.payments = [];
+      } else {
+        currentStatement.payments = pmtsResult.data || [];
+      }
+
       renderStatement();
     }
 
@@ -846,6 +879,7 @@
       const deal = stmt.deal;
       const dpd = (stmt.dpd || []).slice().sort((a,b) =>
         String(a.due_date).localeCompare(String(b.due_date)));
+      const payments = stmt.payments || [];
 
       const advance = Number(deal.advance) || 0;
       const term = Number(deal.term_months) || 0;
@@ -897,7 +931,7 @@
           <div class="stmt-block-title">Activity</div>
           <table class="stmt-table" id="stmt-activity">
             <thead><tr>
-              <th>Date</th><th>Transaction</th>
+              <th>Date</th><th>Type</th><th>Method</th>
               <th class="num">Charge</th><th class="num">Payment</th>
             </tr></thead>
             <tbody></tbody>
@@ -928,14 +962,14 @@
       $('#stmt-date-input').addEventListener('change', (e) => {
         statementDateISO = e.target.value || localISO(new Date());
         renderOverview(deal, dpd, monthlyPmt);
-        renderActivity(dpd);
+        renderActivity(dpd, payments);
         renderSchedule(advance, firstDue, schedRows, buyback, maturity);
       });
 
       // Account info (static-ish — only Statement Date varies)
       renderAccount(deal, maturity);
       renderOverview(deal, dpd, monthlyPmt);
-      renderActivity(dpd);
+      renderActivity(dpd, payments);
       renderSchedule(advance, firstDue, schedRows, buyback, maturity);
     }
 
@@ -1013,39 +1047,57 @@
       `;
     }
 
-    function renderActivity(dpd) {
+    function renderActivity(dpd, payments) {
       const stmtDate = parseISO(statementDateISO);
-      // Build a combined chronological feed of received + missed events
+      // Build a combined chronological feed of received + missed events.
+      // Received rows come from get_sponsor_payments (rich method/type data);
+      // missed rows are derived from the dpd schedule.
       const events = [];
+      for (const p of (payments || [])) {
+        const dd = parseISO(p.payment_date);
+        if (!dd || dd > stmtDate) continue;
+        events.push({
+          date: dd,
+          kind: 'received',
+          amount: Number(p.amount) || 0,
+          method: p.method || null,
+          type: p.payment_type || 'Payment Received'
+        });
+      }
       for (const r of dpd) {
-        const dd = parseISO(r.due_date);
-        if (!dd) continue;
-        const actual = Number(r.actual_amt) || 0;
-        if (actual > 0 && dd <= stmtDate) {
-          events.push({ date: dd, kind: 'received', amount: actual });
-        }
         if (isMissed(r, stmtDate)) {
-          events.push({ date: dd, kind: 'missed', amount: Number(r.sched_amt) || 0 });
+          events.push({
+            date: parseISO(r.due_date),
+            kind: 'missed',
+            amount: Number(r.sched_amt) || 0
+          });
         }
       }
       events.sort((a,b) => a.date - b.date);
       const tbody = $('#stmt-activity tbody');
       if (!events.length) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:14px;">No payment activity as of ${fmtMDY(stmtDate)}.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--dim);padding:14px;">No payment activity yet.</td></tr>`;
         return;
       }
       tbody.innerHTML = events.map(e => {
         if (e.kind === 'received') {
+          const methodCell = !e.method
+            ? '<span class="empty-cell">—</span>'
+            : e.method === 'Reserves'
+              ? `<span class="method-reserves">${escapeHtml(e.method)}</span>`
+              : escapeHtml(e.method);
           return `<tr>
-            <td>${fmtMDY(e.date)}</td>
-            <td>Payment Received</td>
+            <td>${fmtMDYSlash(e.date)}</td>
+            <td>${escapeHtml(e.type)}</td>
+            <td>${methodCell}</td>
             <td class="num"><span class="empty-cell">—</span></td>
             <td class="num">${fmtUSD(e.amount)}</td>
           </tr>`;
         }
         return `<tr class="row-missed">
-          <td><span class="missed-tag">Missed</span>${fmtMDY(e.date)}</td>
+          <td><span class="missed-tag">Missed</span>${fmtMDYSlash(e.date)}</td>
           <td>Payment Missed</td>
+          <td><span class="empty-cell">—</span></td>
           <td class="num">${fmtUSD(e.amount)}</td>
           <td class="num"><span class="empty-cell">—</span></td>
         </tr>`;
