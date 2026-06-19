@@ -893,11 +893,6 @@
       const lockout = (deal.buyback_lockout_months ?? 6);
       const monthlyPmt = deriveMonthlyPmt(dpd);
 
-      // Reserves: 1 of 147 deals has no reserve_requirement set; skip the
-      // entire reserve UI for those rather than showing $0 or N/A.
-      const reserveReq = Number(deal.reserve_requirement) || 0;
-      const hasReserve = reserveReq > 0;
-
       // For IO+balloon buyback precision: recover the contractual per-month
       // interest charge by summing all scheduled payments minus advance,
       // then snapping that total to the nearest dollar when within
@@ -956,7 +951,6 @@
             <thead><tr>
               <th>Payment Date</th>
               <th class="num">Payment Amount</th>
-              ${hasReserve ? '<th class="num">Reserve Balance</th>' : ''}
               <th class="num">Buyback Option</th>
             </tr></thead>
             <tbody></tbody>
@@ -981,7 +975,7 @@
         statementDateISO = v;
         renderOverview(deal, dpd, monthlyPmt);
         renderActivity(dpd, payments);
-        renderSchedule(advance, firstDue, schedRows, buyback, maturity, dpd, hasReserve);
+        renderSchedule(advance, firstDue, schedRows, buyback, maturity);
       });
 
       // Account info (static-ish — only Statement Date varies)
@@ -1152,20 +1146,10 @@
       }).join('');
     }
 
-    // Format a reserve-balance amount with red styling when negative.
-    function reserveCell(v) {
-      if (v === null || v === undefined || !Number.isFinite(v)) {
-        return '<td class="num"><span class="empty-cell">—</span></td>';
-      }
-      const cls = v < 0 ? 'num balance-neg' : 'num';
-      return `<td class="${cls}">${fmtUSD(v)}</td>`;
-    }
-
-    function renderSchedule(advance, firstDue, schedRows, buyback, maturity, dpd, hasReserve) {
+    function renderSchedule(advance, firstDue, schedRows, buyback, maturity) {
       const tbody = $('#stmt-schedule tbody');
       const rows = [];
       const stmtDate = parseISO(statementDateISO);
-      const stmtMonth = monthStart(stmtDate);
 
       // Origination row
       if (firstDue) {
@@ -1173,15 +1157,11 @@
         rows.push(`<tr class="origination">
           <td>${fmtMDY(origDate)}</td>
           <td class="num">${fmtUSD(-advance)}</td>
-          ${hasReserve ? '<td class="num"><span class="empty-cell">—</span></td>' : ''}
           <td class="num"><span class="empty-cell">—</span></td>
         </tr>`);
       }
 
-      // One row per scheduled payment (with a Missed pill on past-due unpaid rows).
-      // Reserve column: past/current month → row's own balance; future month →
-      // last known past balance (no projection).
-      let lastPastBalance = null;
+      // One row per scheduled payment (with a Missed pill on past-due unpaid rows)
       schedRows.forEach((r, i) => {
         const bv = buyback ? buyback[i] : undefined;
         const dd = parseISO(r.due_date);
@@ -1190,26 +1170,9 @@
         const dateCell = missed
           ? `<span class="missed-tag">Missed</span>${fmtMDY(dd)}`
           : fmtMDY(dd);
-
-        let reserveTd = '';
-        if (hasReserve) {
-          const ownBalance = Number(r.reserve_balance_eom);
-          const ownIsFinite = Number.isFinite(ownBalance);
-          const isFuture = monthStart(dd) > stmtMonth;
-          if (!isFuture && ownIsFinite) {
-            lastPastBalance = ownBalance;
-            reserveTd = reserveCell(ownBalance);
-          } else if (isFuture) {
-            reserveTd = reserveCell(lastPastBalance);
-          } else {
-            reserveTd = reserveCell(null);
-          }
-        }
-
         rows.push(`<tr${cls}>
           <td>${dateCell}</td>
           <td class="num">${fmtUSD(r.sched_amt)}</td>
-          ${reserveTd}
           <td class="num">${buybackCell(bv)}</td>
         </tr>`);
       });
@@ -1220,7 +1183,6 @@
         rows.push(`<tr class="post-term">
           <td>${fmtMDY(postDate)}</td>
           <td class="num">${fmtUSD(0)}</td>
-          ${hasReserve ? '<td class="num"><span class="empty-cell">—</span></td>' : ''}
           <td class="num">NA</td>
         </tr>`);
       }
