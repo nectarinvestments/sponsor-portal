@@ -397,6 +397,8 @@
   }
   .stmt-table tbody tr.row-missed td { color: #8E2E22; }
   .kv .v.missed { color: #C0392B; font-weight: 600; }
+  /* Negative balances render in red; same hue as missed text. */
+  .balance-neg { color: #C0392B; }
 
   /* Reserves method gets a subtle amber tag — distinct from cash methods. */
   .method-reserves {
@@ -891,6 +893,11 @@
       const lockout = (deal.buyback_lockout_months ?? 6);
       const monthlyPmt = deriveMonthlyPmt(dpd);
 
+      // Reserves: 1 of 147 deals has no reserve_requirement set; skip the
+      // entire reserve UI for those rather than showing $0 or N/A.
+      const reserveReq = Number(deal.reserve_requirement) || 0;
+      const hasReserve = reserveReq > 0;
+
       // For IO+balloon buyback precision: recover the contractual per-month
       // interest charge by summing all scheduled payments minus advance,
       // then snapping that total to the nearest dollar when within
@@ -949,6 +956,7 @@
             <thead><tr>
               <th>Payment Date</th>
               <th class="num">Payment Amount</th>
+              ${hasReserve ? '<th class="num">Reserve Balance</th>' : ''}
               <th class="num">Buyback Option</th>
             </tr></thead>
             <tbody></tbody>
@@ -973,7 +981,7 @@
         statementDateISO = v;
         renderOverview(deal, dpd, monthlyPmt);
         renderActivity(dpd, payments);
-        renderSchedule(advance, firstDue, schedRows, buyback, maturity);
+        renderSchedule(advance, firstDue, schedRows, buyback, maturity, dpd, hasReserve);
       });
 
       // Account info (static-ish — only Statement Date varies)
@@ -984,6 +992,11 @@
     }
 
     function renderAccount(deal, maturity) {
+      const reserveReq = Number(deal.reserve_requirement) || 0;
+      const reserveLine = reserveReq > 0
+        ? `<div class="k">Reserve Requirement</div>
+           <div class="v">${fmtUSD(reserveReq)}</div>`
+        : '';
       $('#stmt-account').innerHTML = `
         <div class="stmt-block-title">Account Information</div>
         <div class="kv">
@@ -993,6 +1006,7 @@
           <div class="v">${escapeHtml(deal.status || '—')}</div>
           <div class="k">Maturity Date</div>
           <div class="v">${maturity ? fmtMDY(maturity) : '—'}</div>
+          ${reserveLine}
         </div>
       `;
     }
@@ -1044,6 +1058,27 @@
         : `${missedCount} (${fmtUSD(missedSum)})`;
       const missedClass = missedCount > 0 ? 'v missed' : 'v';
 
+      // Current Reserve Balance — latest dpd row whose month ≤ statement month.
+      // Defaults to the deal's reserve_requirement when no past row qualifies
+      // (e.g., a statement dated before the first scheduled due date).
+      const reserveReq = Number(deal.reserve_requirement) || 0;
+      const hasReserve = reserveReq > 0;
+      let reserveLine = '';
+      if (hasReserve) {
+        let currentReserve = reserveReq;
+        for (const r of dpd) {
+          const dd = parseISO(r.due_date);
+          if (!dd) continue;
+          if (monthStart(dd) <= stmtMonthStart) {
+            const b = Number(r.reserve_balance_eom);
+            if (Number.isFinite(b)) currentReserve = b;
+          }
+        }
+        const cls = currentReserve < 0 ? 'v balance-neg' : 'v';
+        reserveLine = `<div class="k">Current Reserve Balance</div>
+                       <div class="${cls}">${fmtUSD(currentReserve)}</div>`;
+      }
+
       $('#stmt-overview').innerHTML = `
         <div class="stmt-block-title">Payment Overview</div>
         <div class="kv">
@@ -1053,6 +1088,7 @@
           <div class="v">${fmtUSD(0)}</div>
           <div class="k">Missed Payments</div>
           <div class="${missedClass}">${missedLabel}</div>
+          ${reserveLine}
           <div class="k">Total Due ${fmtMonYear(stmtDate)}</div>
           <div class="v total">${fmtUSD(totalDue)}</div>
         </div>
@@ -1116,9 +1152,20 @@
       }).join('');
     }
 
-    function renderSchedule(advance, firstDue, schedRows, buyback, maturity) {
+    // Format a reserve-balance amount with red styling when negative.
+    function reserveCell(v) {
+      if (v === null || v === undefined || !Number.isFinite(v)) {
+        return '<td class="num"><span class="empty-cell">—</span></td>';
+      }
+      const cls = v < 0 ? 'num balance-neg' : 'num';
+      return `<td class="${cls}">${fmtUSD(v)}</td>`;
+    }
+
+    function renderSchedule(advance, firstDue, schedRows, buyback, maturity, dpd, hasReserve) {
       const tbody = $('#stmt-schedule tbody');
       const rows = [];
+      const stmtDate = parseISO(statementDateISO);
+      const stmtMonth = monthStart(stmtDate);
 
       // Origination row
       if (firstDue) {
@@ -1126,12 +1173,15 @@
         rows.push(`<tr class="origination">
           <td>${fmtMDY(origDate)}</td>
           <td class="num">${fmtUSD(-advance)}</td>
+          ${hasReserve ? '<td class="num"><span class="empty-cell">—</span></td>' : ''}
           <td class="num"><span class="empty-cell">—</span></td>
         </tr>`);
       }
 
-      // One row per scheduled payment (with a Missed pill on past-due unpaid rows)
-      const stmtDate = parseISO(statementDateISO);
+      // One row per scheduled payment (with a Missed pill on past-due unpaid rows).
+      // Reserve column: past/current month → row's own balance; future month →
+      // last known past balance (no projection).
+      let lastPastBalance = null;
       schedRows.forEach((r, i) => {
         const bv = buyback ? buyback[i] : undefined;
         const dd = parseISO(r.due_date);
@@ -1140,9 +1190,26 @@
         const dateCell = missed
           ? `<span class="missed-tag">Missed</span>${fmtMDY(dd)}`
           : fmtMDY(dd);
+
+        let reserveTd = '';
+        if (hasReserve) {
+          const ownBalance = Number(r.reserve_balance_eom);
+          const ownIsFinite = Number.isFinite(ownBalance);
+          const isFuture = monthStart(dd) > stmtMonth;
+          if (!isFuture && ownIsFinite) {
+            lastPastBalance = ownBalance;
+            reserveTd = reserveCell(ownBalance);
+          } else if (isFuture) {
+            reserveTd = reserveCell(lastPastBalance);
+          } else {
+            reserveTd = reserveCell(null);
+          }
+        }
+
         rows.push(`<tr${cls}>
           <td>${dateCell}</td>
           <td class="num">${fmtUSD(r.sched_amt)}</td>
+          ${reserveTd}
           <td class="num">${buybackCell(bv)}</td>
         </tr>`);
       });
@@ -1153,6 +1220,7 @@
         rows.push(`<tr class="post-term">
           <td>${fmtMDY(postDate)}</td>
           <td class="num">${fmtUSD(0)}</td>
+          ${hasReserve ? '<td class="num"><span class="empty-cell">—</span></td>' : ''}
           <td class="num">NA</td>
         </tr>`);
       }
