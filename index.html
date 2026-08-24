@@ -476,6 +476,27 @@ const DISCLAIMER_TEXT = `
   }
   .stmt-table tbody tr.row-missed td { color: #8E2E22; }
 
+  /* Future rows — contractual payments that have not come due yet. Muted so
+     they read as "not yet happened" at a glance, and never carry a
+     missed/paid treatment. */
+  .stmt-table tbody tr.row-future td { color: var(--dim); background: rgba(1,4,29,0.015); }
+  .sched-tag {
+    display: inline-block;
+    font-family: 'Manrope', sans-serif;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(1,4,29,0.05);
+    color: var(--dim);
+    border: 1px solid var(--border);
+    vertical-align: middle;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   /* Paid states in the Payment Schedule. A late payment is still a payment —
      it gets a subtle amber "late" marker, never the red missed treatment. */
   .paid-date { font-family: 'DM Mono', monospace; }
@@ -1060,6 +1081,12 @@ const DISCLAIMER_TEXT = `
       // interest charge by summing all scheduled payments minus advance,
       // then snapping that total to the nearest dollar when within
       // `term × $0.01` (5× the cumulative cent-rounding error bound).
+      //
+      // This needs the WHOLE contractual schedule to be meaningful. It now
+      // gets one: dpd carries future rows, so the sum finally covers the full
+      // term. While the array was capped at the reporting ceiling this total
+      // was short by every remaining payment, understating the interest and
+      // skewing the buyback figures on IO+balloon deals.
       const totalSched = dpdAsc.reduce((s,r) => s + (Number(r.sched_amt)||0), 0);
       const rawInt = totalSched - advance;
       const dollarSnap = Math.round(rawInt);
@@ -1245,7 +1272,8 @@ const DISCLAIMER_TEXT = `
       const stmtMonthStart = new Date(stmtDate.getFullYear(), stmtDate.getMonth(), 1);
       const stmtMonthEnd = new Date(stmtDate.getFullYear(), stmtDate.getMonth()+1, 0);
 
-      // Missed = past-due scheduled rows with actual = 0
+      // Missed = rows the backend flagged is_missed, gated by statement date.
+      // Future rows are never is_missed, so they cannot inflate this.
       let missedCount = 0;
       let missedSum = 0;
       for (const r of dpd) {
@@ -1254,7 +1282,10 @@ const DISCLAIMER_TEXT = `
           missedSum += Number(r.sched_amt) || 0;
         }
       }
-      // Current-month scheduled
+      // Current-month scheduled. Deliberately does NOT skip is_future rows:
+      // the reporting ceiling can sit in the previous month, which flags the
+      // current month's payment as future even though it is exactly what is
+      // due now. This is the "Total Due {month}" figure, so it belongs.
       let currentSched = 0;
       for (const r of dpd) {
         const dd = parseISO(r.due_date);
@@ -1285,10 +1316,15 @@ const DISCLAIMER_TEXT = `
         for (const r of dpd) {
           const dd = parseISO(r.due_date);
           if (!dd) continue;
-          if (monthStart(dd) <= stmtMonthStart) {
-            const b = Number(r.reserve_balance_eom);
-            if (Number.isFinite(b)) currentReserve = b;
-          }
+          if (monthStart(dd) > stmtMonthStart) continue;
+          // Future rows carry reserve_balance_eom = null. Guard on null
+          // BEFORE coercing: Number(null) is 0 and Number.isFinite(0) is true,
+          // so a null would otherwise read as a real zero balance and wipe out
+          // the last known figure. Skipping them leaves currentReserve on the
+          // most recent PAST row, which is the one that actually happened.
+          if (r.reserve_balance_eom == null) continue;
+          const b = Number(r.reserve_balance_eom);
+          if (Number.isFinite(b)) currentReserve = b;
         }
         // Floor penny-rounding negatives (-$1 < v < 0) to $0; only display
         // a real drawdown ( v < -$1, e.g. Cole Gardens 1199 at -$630) in red.
@@ -1402,18 +1438,29 @@ const DISCLAIMER_TEXT = `
         </tr>`);
       }
 
-      // One row per scheduled payment. Three states: missed, paid late, paid.
+      // One row per scheduled payment. Four states: future, missed, paid late,
+      // paid.
       schedRows.forEach((r, i) => {
-        const bv = buyback ? buyback[i] : undefined;
+        // buyback[n] is the amount after payment n+1, so it is keyed to the
+        // CONTRACTUAL payment number, not this row's position in the array.
+        // Those coincided only while the array was a contiguous run from
+        // payment 1; prefer pmt_num and fall back to the index.
+        const pn = Number(r.pmt_num);
+        const bi = Number.isFinite(pn) && pn > 0 ? pn - 1 : i;
+        const bv = buyback ? buyback[bi] : undefined;
+
         const dd = parseISO(r.due_date);
-        const missed = isMissed(r, stmtDate);
-        const recv = parseISO(r.received_date);
+        const future = !!r.is_future;
+        const missed = !future && isMissed(r, stmtDate);
+        const recv = future ? null : parseISO(r.received_date);
         // A payment received after the statement date has not happened yet
         // as far as this statement is concerned.
         const showRecv = recv && recv <= stmtDate ? recv : null;
 
         let statusCell;
-        if (missed) {
+        if (future) {
+          statusCell = `<span class="sched-tag">Scheduled</span>`;
+        } else if (missed) {
           statusCell = `<span class="missed-tag">Missed</span>`;
         } else if (showRecv) {
           statusCell = `<span class="paid-date">Paid ${fmtMDYSlash(showRecv)}</span>` +
@@ -1422,7 +1469,8 @@ const DISCLAIMER_TEXT = `
           statusCell = `<span class="empty-cell">—</span>`;
         }
 
-        rows.push(`<tr${missed ? ' class="row-missed"' : ''}>
+        const cls = future ? ' class="row-future"' : (missed ? ' class="row-missed"' : '');
+        rows.push(`<tr${cls}>
           <td>${fmtMDY(dd)}</td>
           <td class="num">${fmtUSD(r.sched_amt)}</td>
           <td>${statusCell}</td>

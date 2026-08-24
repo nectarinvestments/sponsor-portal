@@ -51,7 +51,7 @@ Matches the existing PDF template the servicing team uses (Walker's spreadsheet)
 - **Title row** — entity name, account number, prominent `account_status` badge, month-first statement-date field (defaults to today), and the `Data as of {as_of}` reporting date
 - **Two-column** — Payment Overview / Account Information
 - **Activity** — recorded payments and missed months on or before the statement date, newest-first
-- **Payment Schedule** — origination row (`-advance`), one row per scheduled payment with `Status` and `Buyback Option` columns, and a `$0.00 / NA` post-term row (suppressed while the schedule is truncated). Rendered **newest-first**, matching the order the backend returns `dpd` in
+- **Payment Schedule** — origination row (`-advance`), one row per scheduled payment with `Status` and `Buyback Option` columns, and a `$0.00 / NA` post-term row. Runs the **full contractual schedule through maturity**, with future rows muted and tagged `Scheduled`. Rendered **newest-first**, matching the order the backend returns `dpd` in
 - **Footer** — `DISCLAIMER_TEXT` plus the servicing contact line
 
 ### Dates
@@ -80,16 +80,33 @@ Each `dpd` row carries `is_missed` and `received_date` from the backend; the fro
 
 `renderActivity` is the exception to "preserve backend order": it interleaves two sources (payments from `get_sponsor_payments`, missed rows derived from `dpd`), and merging two lists still needs an explicit ordering, so it sorts descending. Its `events` array is display-only — nothing downstream reads it — so that ordering carries no arithmetic.
 
+### Future rows
+
+`dpd` carries the **full contractual schedule, including payments that have not come due yet**. Future rows are flagged `is_future` and are hollow: `actual_amt` 0, `received_date` null, `is_missed` never true, and `reserve_balance_eom` **null**.
+
+They render with `.row-future` (muted) and a `Scheduled` tag, never a Missed or Paid treatment.
+
+The null `reserve_balance_eom` is the sharp edge. The Current Reserve Balance walks the array keeping the last qualifying row, and `Number(null)` is `0` while `Number.isFinite(0)` is `true` — so a null future row read as a genuine zero balance and wiped out the last known figure. The loop now skips `reserve_balance_eom == null` **before** coercing, leaving the balance on the most recent past row. There is a mutation-tested assertion covering this; without the guard the balance collapses to `$0.00`.
+
+Two other consequences of the array growing:
+
+- **Buyback is keyed to `pmt_num`, not array position.** `buyback[n]` is the amount after payment `n+1`. Position and payment number coincided only while the array was a contiguous run from payment 1; `pmt_num` is the contract, so index by it (falling back to position when absent).
+- **`totalSched` is now correct.** The IO+balloon interest recovery sums every scheduled payment minus advance. While the array was capped that sum was short by every remaining payment, understating interest and skewing buyback figures. It now covers the full term.
+
+`missedCount` is unaffected — `is_missed` is never true on a future row.
+
+`currentSched` deliberately does **not** skip future rows: the reporting ceiling often sits in the previous month, which flags the current month's payment as future even though it is exactly what is due now, and that figure is the "Total Due {month}" line.
+
 ### Maturity vs. schedule end
 
 Two dates that are easy to conflate, and were:
 
 - `deal.maturity_date` — the contractual maturity, authoritative from the backend. Use this for the **Maturity Date** row.
-- the last `dpd` row — the **reporting ceiling**, not the end of the term. `dpd` is capped, so on a live deal the last visible row is just where the data stops (deal 1062: capped Jul 2026, actually matures Jul 2027).
+- the last `dpd` row — **still not maturity**, even now that the array runs the full term. The explicit field is the contract; the array is data.
 
 Never derive maturity from the `dpd` array. `scheduleEnd` and `maturity` are separate variables in `renderStatement` for exactly this reason.
 
-The "$0.00 / NA" post-term row is anchored to `scheduleEnd`, and is **suppressed entirely while the schedule is still truncated** (`scheduleEnd` earlier than `maturity`). Rendering it mid-term would assert the schedule had ended a year early. Matured deals, where the schedule does reach maturity, keep the row as before.
+The "$0.00 / NA" post-term row is anchored to `scheduleEnd` and suppressed while the schedule is truncated (`scheduleEnd` earlier than `maturity`), so it renders on a full schedule and stays hidden on a capped one.
 
 `deal.days_past_due` is also available on the payload. Currently unused — `account_status` already carries "Past Due - N days" as a display string.
 
