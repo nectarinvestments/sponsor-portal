@@ -11,6 +11,25 @@
     "sb_publishable_CQG1nuHuso2snrCMDasfeQ_8fcbI3Ws"
   );
 </script>
+
+<script>
+// ============================================================
+// APPROVED DISCLAIMER — do not edit without compliance sign-off
+// Source: Brittany, portfolio management call
+// Renders on both the on-screen statement and the PDF download.
+//
+// This is trusted, compliance-authored HTML and is injected verbatim —
+// NOT escaped. Escaping it would print the tags. It is a static constant,
+// never user input. The contact line lives inside this block, so the
+// statement footer must not add one of its own.
+// ============================================================
+const DISCLAIMER_TEXT = `
+<p>Disclaimer: This statement is provided for informational purposes only as of the date of receipt. It does not represent a buyback or payoff amount, nor does it limit the total amount owed in the event of default. Future payments or account activity may affect the accuracy of the information contained herein. Accordingly, this statement should be considered outdated within seven (7) days from the date of receipt.</p>
+<p>To request an official buyback amount, please contact <a href="mailto:servicing@usenectar.com">servicing@usenectar.com</a>.</p>
+<p>Any allocation between taxable income and cost basis should be determined by your tax professional.</p>
+`;
+</script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&family=Manrope:wght@300;400;500;600;700&display=swap');
 
@@ -241,6 +260,29 @@
   .pill-status.closed { background: rgba(1,4,29,0.06); color: var(--dim); }
   .pill-status.workout { background: rgba(214,137,16,0.12); color: var(--amber); }
 
+  /* ── ACCOUNT STATUS ──
+     Four buckets, shared by the deals list (pill) and the statement (badge):
+       good   — "Current", "Paid in Full …"   → green
+       bad    — "Past Due - N days"           → red
+       muted  — "Charged Off …", "Closed …"   → grey
+       neutral— anything unrecognized         → default text
+     Colors are print-exact so the PDF keeps the signal. */
+  .pill-acct {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .pill-acct.good    { background: rgba(26,158,110,0.10); color: var(--green); }
+  .pill-acct.bad     { background: rgba(192,57,43,0.10);  color: var(--red); }
+  .pill-acct.muted   { background: rgba(1,4,29,0.06);     color: var(--dim); }
+  .pill-acct.neutral { background: rgba(1,4,29,0.04);     color: var(--text); }
+
   /* ── STATEMENT VIEW ── */
   .stmt-actions {
     display: flex;
@@ -276,7 +318,7 @@
     opacity: 0.9;
   }
 
-  /* Title bar with entity / loan / statement date */
+  /* Title bar with entity / account / statement date */
   .stmt-title-row {
     display: grid;
     grid-template-columns: 1fr auto auto;
@@ -291,7 +333,7 @@
     line-height: 1.1;
     color: var(--text);
   }
-  .stmt-loan-num {
+  .stmt-acct-num {
     font-family: 'DM Mono', monospace;
     font-size: 13px;
     color: var(--dim);
@@ -314,6 +356,40 @@
     background: var(--card);
     color: var(--text);
   }
+  /* <input type="date"> renders in the BROWSER's locale, which is day-first
+     outside the US and cannot be overridden. This echo is the authoritative
+     month-first rendering; the input stays as the picker control, and print
+     swaps the two so the PDF never shows a day-first date. */
+  .stmt-date-echo {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    margin-top: 4px;
+  }
+  .stmt-asof {
+    font-size: 10.5px;
+    color: var(--dim);
+    margin-top: 5px;
+    white-space: nowrap;
+  }
+
+  /* Prominent account-status badge at the top of the statement. */
+  .stmt-acct-status {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 5px 14px;
+    border-radius: 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stmt-acct-status.good    { background: rgba(26,158,110,0.10); color: var(--green); border-color: rgba(26,158,110,0.35); }
+  .stmt-acct-status.bad     { background: rgba(192,57,43,0.10);  color: var(--red);   border-color: rgba(192,57,43,0.35); }
+  .stmt-acct-status.muted   { background: rgba(1,4,29,0.05);     color: var(--dim);   border-color: var(--border); }
+  .stmt-acct-status.neutral { background: rgba(1,4,29,0.04);     color: var(--text);  border-color: var(--border); }
 
   /* Two-column sections */
   .stmt-two-col {
@@ -396,6 +472,27 @@
     print-color-adjust: exact;
   }
   .stmt-table tbody tr.row-missed td { color: #8E2E22; }
+
+  /* Paid states in the Payment Schedule. A late payment is still a payment —
+     it gets a subtle amber "late" marker, never the red missed treatment. */
+  .paid-date { font-family: 'DM Mono', monospace; }
+  .late-tag {
+    display: inline-block;
+    font-family: 'Manrope', sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: rgba(214,137,16,0.14);
+    color: #6B4915;
+    border: 1px solid rgba(214,137,16,0.40);
+    margin-left: 7px;
+    vertical-align: middle;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .kv .v.missed { color: #C0392B; font-weight: 600; }
   /* Negative balances render in red; same hue as missed text. */
   .balance-neg { color: #C0392B; }
@@ -424,6 +521,14 @@
     font-size: 11px;
     line-height: 1.6;
   }
+  /* DISCLAIMER_TEXT ships its own <p> tags; the global reset zeroes margins,
+     so restore paragraph spacing here rather than inside the approved text. */
+  .stmt-footer p + p { margin-top: 9px; }
+  .stmt-footer a {
+    color: var(--statement-purple);
+    text-decoration: underline;
+  }
+  .stmt-footer-asof { font-weight: 600; color: var(--text); }
 
   .stmt-loading {
     padding: 60px;
@@ -518,11 +623,11 @@
     }
     .stmt-brand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .stmt-block-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .stmt-date-field input {
-      border: none;
-      padding: 0;
-      background: transparent;
-    }
+    /* The native date input prints in the browser locale (day-first outside
+       the US), so drop it entirely and let the month-first echo carry the
+       date on the PDF. */
+    .stmt-date-field input { display: none !important; }
+    .stmt-date-echo { margin-top: 0; }
     .stmt-section, .stmt-two-col > div { padding-left: 0; padding-right: 0; }
     .stmt-two-col > div + div { padding-left: 16px; }
     .stmt-section { break-inside: auto; page-break-inside: auto; }
@@ -543,7 +648,7 @@
 <header class="app-header" id="app-header">
   <div class="app-logo">Nectar<span>Sponsor Portal</span></div>
   <div class="app-header-right" id="app-header-right">
-    <span class="back-link hidden" id="app-back">← All loans</span>
+    <span class="back-link hidden" id="app-back">← All accounts</span>
     <span class="email" id="app-email"></span>
     <button class="btn" id="app-logout">Log out</button>
   </div>
@@ -554,7 +659,7 @@
   <div class="login-card">
     <div class="login-title">Sponsor Portal</div>
     <div class="login-sub">
-      Generate account statements for your Nectar loans. Enter the email on file and we'll send you a one-time login link.
+      Generate account statements for your Nectar accounts. Enter the email on file and we'll send you a one-time login link.
     </div>
     <form id="login-form" autocomplete="on">
       <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
@@ -568,8 +673,8 @@
 
 <!-- ── 2. PICKER ── -->
 <section id="view-picker" class="main hidden">
-  <div class="picker-title">Your loans</div>
-  <div class="picker-sub" id="picker-sub">Select a loan to generate an account statement.</div>
+  <div class="picker-title">Your Accounts</div>
+  <div class="picker-sub" id="picker-sub">Select an account to generate an account statement.</div>
   <div id="impersonation-controls" class="impersonation-controls hidden">
     <label for="impersonation-select">View as sponsor:</label>
     <select id="impersonation-select">
@@ -580,9 +685,10 @@
   <table class="picker-table">
     <thead>
       <tr>
-        <th>Loan #</th>
+        <th>Account #</th>
         <th>Entity</th>
         <th>Status</th>
+        <th>Account Status</th>
         <th style="text-align:right">Advance</th>
         <th style="text-align:right">Term (mo)</th>
       </tr>
@@ -590,7 +696,7 @@
     <tbody id="picker-tbody"></tbody>
   </table>
   <div id="picker-empty" class="hidden" style="padding:24px;color:var(--dim);text-align:center;">
-    No loans associated with this email.
+    No accounts associated with this email.
   </div>
 </section>
 
@@ -635,9 +741,13 @@
       const abs = Math.abs(num);
       return sign + '$' + abs.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
+    // Accepts "YYYY-MM-DD" and tolerates a trailing time component
+    // (received_date may come back as a timestamp).
+    const dateOnly = s => (s === null || s === undefined) ? '' : String(s).slice(0, 10);
     function parseISO(s) {
       if (!s) return null;
-      const [y,m,d] = String(s).split('-').map(Number);
+      const [y,m,d] = dateOnly(s).split('-').map(Number);
+      if (!y || !m || !d) return null;
       return new Date(y, m-1, d);
     }
     function fmtMDY(d) {
@@ -668,6 +778,27 @@
     function escapeHtml(s) {
       return String(s ?? '').replace(/[&<>"']/g, c =>
         ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ─── Account status ───────────────────────────────────────
+    // account_status arrives from the backend as a ready-to-display string
+    // ("Current", "Past Due - 405 days", "Paid in Full - Standard Buyback",
+    // "Charged Off (Loss)", "Closed - Workout", …). We never parse it for
+    // meaning — we only bucket it for color.
+    function acctStatusClass(s) {
+      const t = String(s || '').trim();
+      if (!t) return 'neutral';
+      if (/^past due/i.test(t)) return 'bad';
+      if (/^paid in full/i.test(t)) return 'good';
+      if (/^current$/i.test(t)) return 'good';
+      if (/^(charged off|closed)/i.test(t)) return 'muted';
+      return 'neutral';
+    }
+
+    // DISCLAIMER_TEXT is the compliance-approved HTML block at the top of this
+    // file. Injected verbatim by design — see the note on the constant.
+    function renderDisclaimer() {
+      return (typeof DISCLAIMER_TEXT === 'string' ? DISCLAIMER_TEXT : '').trim();
     }
 
     // ─── Buyback math (per spec) ───────────────────────────────
@@ -774,26 +905,28 @@
     // ─── Picker ────────────────────────────────────────────────
     async function loadPicker() {
       const tbody = $('#picker-tbody');
-      tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;color:var(--dim);text-align:center;">Loading loans…</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;color:var(--dim);text-align:center;">Loading accounts…</td></tr>`;
       $('#picker-empty').classList.add('hidden');
 
       const { data, error } = viewingAs
         ? await sb.rpc('get_sponsor_deals_as', { p_email: viewingAs })
         : await sb.rpc('get_sponsor_deals');
       if (error) {
-        tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;color:var(--red);text-align:center;">${escapeHtml(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;color:var(--red);text-align:center;">${escapeHtml(error.message)}</td></tr>`;
         return;
       }
-      deals = (data || []).slice().sort((a,b) => a.deal_id - b.deal_id);
+      // Order comes from the backend — open accounts first, closed after.
+      // Do not re-sort.
+      deals = data || [];
       $('#picker-empty').textContent = viewingAs
-        ? 'No deals found for this sponsor.'
-        : 'No loans associated with this email.';
+        ? 'No accounts found for this sponsor.'
+        : 'No accounts associated with this email.';
       renderPicker('');
       $('#picker-sub').textContent = viewingAs
-        ? `Viewing all ${deals.length} deal${deals.length === 1 ? '' : 's'} for ${viewingAs}.`
+        ? `Viewing all ${deals.length} account${deals.length === 1 ? '' : 's'} for ${viewingAs}.`
         : (deals.length === 1
-            ? 'Select your loan to generate an account statement.'
-            : `${deals.length} loans on file. Select one to generate an account statement.`);
+            ? 'Select your account to generate an account statement.'
+            : `${deals.length} accounts on file. Select one to generate an account statement.`);
     }
 
     function renderPicker(filter) {
@@ -813,14 +946,19 @@
         const cls = /open/i.test(status) ? 'open'
                   : /workout|default|delin/i.test(status) ? 'workout'
                   : 'closed';
+        const acct = (d.account_status || '').toString();
+        const acctCell = acct
+          ? `<span class="pill-acct ${acctStatusClass(acct)}">${escapeHtml(acct)}</span>`
+          : '<span style="color:var(--dim);">—</span>';
         return `<tr data-id="${d.deal_id}">
           <td style="font-family:'DM Mono',monospace;">${d.deal_id}</td>
           <td>${escapeHtml(d.name || '')}</td>
           <td><span class="pill-status ${cls}">${escapeHtml(status || '—')}</span></td>
+          <td>${acctCell}</td>
           <td class="num">${d.advance != null ? fmtUSD(d.advance) : ''}</td>
           <td class="num">${d.term_months ?? ''}</td>
         </tr>`;
-      }).join('') || `<tr><td colspan="5" style="padding:20px;color:var(--dim);text-align:center;">No loans match "${escapeHtml(filter)}".</td></tr>`;
+      }).join('') || `<tr><td colspan="6" style="padding:20px;color:var(--dim);text-align:center;">No accounts match "${escapeHtml(filter)}".</td></tr>`;
       Array.from(tbody.querySelectorAll('tr[data-id]')).forEach(tr => {
         tr.addEventListener('click', () => selectDeal(Number(tr.dataset.id)));
       });
@@ -842,7 +980,7 @@
       }
       if (!data || !data.deal) {
         $('#statement-content').innerHTML =
-          `<div class="stmt-loading" style="color:var(--red);">Loan not found or access denied.</div>`;
+          `<div class="stmt-loading" style="color:var(--red);">Account not found or access denied.</div>`;
         return;
       }
       currentStatement = data;
@@ -881,8 +1019,13 @@
     function renderStatement() {
       const stmt = currentStatement;
       const deal = stmt.deal;
-      const dpd = (stmt.dpd || []).slice().sort((a,b) =>
-        String(a.due_date).localeCompare(String(b.due_date)));
+      // The backend delivers `dpd` newest-first and that is the order the
+      // Payment Schedule renders in — never re-sort it. Order-dependent math
+      // (buyback index alignment, first due / maturity, running reserve
+      // balance) needs oldest-first, so derive that by reversing the
+      // guaranteed ordering rather than imposing a sort of our own.
+      const dpd = stmt.dpd || [];
+      const dpdAsc = dpd.slice().reverse();
       const payments = stmt.payments || [];
 
       // Statement date can never be in the future — clamp leftover state
@@ -893,13 +1036,13 @@
       const advance = Number(deal.advance) || 0;
       const term = Number(deal.term_months) || 0;
       const lockout = (deal.buyback_lockout_months ?? 6);
-      const monthlyPmt = deriveMonthlyPmt(dpd);
+      const monthlyPmt = deriveMonthlyPmt(dpdAsc);
 
       // For IO+balloon buyback precision: recover the contractual per-month
       // interest charge by summing all scheduled payments minus advance,
       // then snapping that total to the nearest dollar when within
       // `term × $0.01` (5× the cumulative cent-rounding error bound).
-      const totalSched = dpd.reduce((s,r) => s + (Number(r.sched_amt)||0), 0);
+      const totalSched = dpdAsc.reduce((s,r) => s + (Number(r.sched_amt)||0), 0);
       const rawInt = totalSched - advance;
       const dollarSnap = Math.round(rawInt);
       const snapTol = Math.max(0.10, term * 0.01);
@@ -909,10 +1052,18 @@
       // Buyback schedule (length = term)
       const buyback = computeBuybackSchedule(advance, monthlyPmt, term, lockout, ioInterestCharge);
 
-      // Scheduled rows (in date order) — drives payment schedule + maturity
-      const schedRows = dpd.filter(r => Number(r.sched_amt) > 0);
+      // Scheduled rows, oldest-first — drives payment schedule + maturity.
+      // Index i here lines up with buyback[i]; the schedule is reversed for
+      // display inside renderSchedule.
+      const schedRows = dpdAsc.filter(r => Number(r.sched_amt) > 0);
       const maturity = schedRows.length ? parseISO(schedRows[schedRows.length-1].due_date) : null;
       const firstDue = schedRows.length ? parseISO(schedRows[0].due_date) : null;
+
+      // Ready-to-display status string from the backend, and the date the
+      // servicing data was cut — reviewers could not otherwise tell how
+      // current the statement was.
+      const acctStatus = deal.account_status || '';
+      const asOf = stmt.as_of ? fmtMDY(parseISO(stmt.as_of)) : '';
 
       const html = `
         <div class="stmt-brand">
@@ -923,11 +1074,16 @@
         <div class="stmt-title-row">
           <div>
             <div class="stmt-entity">${escapeHtml(deal.name || '')}</div>
-            <div class="stmt-loan-num" style="margin-top:6px;">Loan #${deal.id}</div>
+            <div class="stmt-acct-num" style="margin-top:6px;">Account #${deal.id}</div>
+            ${acctStatus
+              ? `<div class="stmt-acct-status ${acctStatusClass(acctStatus)}">${escapeHtml(acctStatus)}</div>`
+              : ''}
           </div>
           <div class="stmt-date-field">
             <label for="stmt-date-input">Statement Date</label>
             <input type="date" id="stmt-date-input" value="${statementDateISO}" max="${todayISO_str}">
+            <div class="stmt-date-echo" id="stmt-date-echo">${fmtMDYSlash(parseISO(statementDateISO))}</div>
+            ${asOf ? `<div class="stmt-asof">Data as of ${escapeHtml(asOf)}</div>` : ''}
           </div>
         </div>
 
@@ -953,6 +1109,7 @@
             <thead><tr>
               <th>Payment Date</th>
               <th class="num">Payment Amount</th>
+              <th>Status</th>
               <th class="num">Buyback Option</th>
             </tr></thead>
             <tbody></tbody>
@@ -960,9 +1117,8 @@
         </div>
 
         <div class="stmt-footer">
-          This statement is provided for informational purposes only as of the date of receipt. It does not represent a buyback or payoff amount, nor does it limit the total amount owed in the event of default. Future payments or account activity may affect the accuracy of the information contained herein. Accordingly, this statement should be considered outdated within seven (7) days from the date of receipt.
-          <br><br>
-          To request an official buyback amount, please contact servicing@usenectar.com.
+          ${asOf ? `<p class="stmt-footer-asof">Data as of ${escapeHtml(asOf)}.</p>` : ''}
+          ${renderDisclaimer()}
         </div>
       `;
       $('#statement-content').innerHTML = html;
@@ -975,19 +1131,21 @@
         let v = e.target.value || today;
         if (v > today) { v = today; e.target.value = v; }
         statementDateISO = v;
-        renderOverview(deal, dpd, monthlyPmt);
-        renderActivity(dpd, payments);
+        const echo = $('#stmt-date-echo');
+        if (echo) echo.textContent = fmtMDYSlash(parseISO(statementDateISO));
+        renderOverview(deal, dpdAsc, monthlyPmt);
+        renderActivity(dpdAsc, payments);
         renderSchedule(advance, firstDue, schedRows, buyback, maturity);
       });
 
       // Account info (static-ish — only Statement Date varies)
-      renderAccount(deal, maturity);
-      renderOverview(deal, dpd, monthlyPmt);
-      renderActivity(dpd, payments);
+      renderAccount(deal, maturity, asOf);
+      renderOverview(deal, dpdAsc, monthlyPmt);
+      renderActivity(dpdAsc, payments);
       renderSchedule(advance, firstDue, schedRows, buyback, maturity);
     }
 
-    function renderAccount(deal, maturity) {
+    function renderAccount(deal, maturity, asOf) {
       const reserveReq = Number(deal.reserve_requirement) || 0;
       const reserveLine = reserveReq > 0
         ? `<div class="k">Reserve Requirement</div>
@@ -998,7 +1156,9 @@
         <div class="kv">
           <div class="k">Statement Date</div>
           <div class="v" id="kv-stmt-date">${fmtMDY(parseISO(statementDateISO))}</div>
-          <div class="k">Loan Status</div>
+          ${asOf ? `<div class="k">Data as of</div>
+                    <div class="v">${escapeHtml(asOf)}</div>` : ''}
+          <div class="k">Status</div>
           <div class="v">${escapeHtml(deal.status || '—')}</div>
           <div class="k">Maturity Date</div>
           <div class="v">${maturity ? fmtMDY(maturity) : '—'}</div>
@@ -1007,17 +1167,27 @@
       `;
     }
 
-    // A scheduled row is "missed" only after its due MONTH has fully closed
-    // relative to the user-selected statement date. A payment due Jun 9 isn't
-    // missed on a Jun 19 statement — June isn't over yet. Strict actual=0 per
-    // spec; partial payments are not flagged.
+    // Whether a row counts as missed is the backend's call now — `is_missed`
+    // is set only once the due month has fully closed with nothing received,
+    // and a month later covered by a catch-up payment comes back with
+    // is_missed = false plus a received_date. We do not re-derive it.
+    //
+    // The one thing still decided here is the statement date: a user may
+    // back-date a statement, and a month that closed after that date had not
+    // yet been missed as of the statement. Same "month fully closed" rule the
+    // backend uses, applied against the selected date instead of today.
     const monthStart = d => new Date(d.getFullYear(), d.getMonth(), 1);
     function isMissed(r, stmtDate) {
+      if (!r.is_missed) return false;
       const dd = parseISO(r.due_date);
       if (!dd) return false;
-      const sched = Number(r.sched_amt) || 0;
-      const actual = Number(r.actual_amt) || 0;
-      return sched > 0 && actual === 0 && monthStart(dd) < monthStart(stmtDate);
+      return monthStart(dd) < monthStart(stmtDate);
+    }
+
+    // Payment landed after the month it was due — still paid, flagged late.
+    function isPaidLate(r) {
+      if (!r.received_date || !r.due_date) return false;
+      return dateOnly(r.received_date) > dateOnly(r.due_date);
     }
 
     function renderOverview(deal, dpd, monthlyPmt) {
@@ -1161,28 +1331,45 @@
       const rows = [];
       const stmtDate = parseISO(statementDateISO);
 
+      // Built oldest-first so buyback[i] stays aligned with payment i+1,
+      // then reversed once at the end to match the newest-first ordering the
+      // backend hands us for `dpd`.
+
       // Origination row
       if (firstDue) {
         const origDate = addMonths(firstDue, -1);
         rows.push(`<tr class="origination">
           <td>${fmtMDY(origDate)}</td>
           <td class="num">${fmtUSD(-advance)}</td>
+          <td><span class="empty-cell">—</span></td>
           <td class="num"><span class="empty-cell">—</span></td>
         </tr>`);
       }
 
-      // One row per scheduled payment (with a Missed pill on past-due unpaid rows)
+      // One row per scheduled payment. Three states: missed, paid late, paid.
       schedRows.forEach((r, i) => {
         const bv = buyback ? buyback[i] : undefined;
         const dd = parseISO(r.due_date);
         const missed = isMissed(r, stmtDate);
-        const cls = missed ? ' class="row-missed"' : '';
-        const dateCell = missed
-          ? `<span class="missed-tag">Missed</span>${fmtMDY(dd)}`
-          : fmtMDY(dd);
-        rows.push(`<tr${cls}>
-          <td>${dateCell}</td>
+        const recv = parseISO(r.received_date);
+        // A payment received after the statement date has not happened yet
+        // as far as this statement is concerned.
+        const showRecv = recv && recv <= stmtDate ? recv : null;
+
+        let statusCell;
+        if (missed) {
+          statusCell = `<span class="missed-tag">Missed</span>`;
+        } else if (showRecv) {
+          statusCell = `<span class="paid-date">Paid ${fmtMDYSlash(showRecv)}</span>` +
+            (isPaidLate(r) ? `<span class="late-tag">Late</span>` : '');
+        } else {
+          statusCell = `<span class="empty-cell">—</span>`;
+        }
+
+        rows.push(`<tr${missed ? ' class="row-missed"' : ''}>
+          <td>${fmtMDY(dd)}</td>
           <td class="num">${fmtUSD(r.sched_amt)}</td>
+          <td>${statusCell}</td>
           <td class="num">${buybackCell(bv)}</td>
         </tr>`);
       });
@@ -1193,11 +1380,12 @@
         rows.push(`<tr class="post-term">
           <td>${fmtMDY(postDate)}</td>
           <td class="num">${fmtUSD(0)}</td>
+          <td><span class="empty-cell">—</span></td>
           <td class="num">NA</td>
         </tr>`);
       }
 
-      tbody.innerHTML = rows.join('');
+      tbody.innerHTML = rows.reverse().join('');
     }
 
     // ─── Print ─────────────────────────────────────────────────
