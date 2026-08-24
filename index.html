@@ -356,15 +356,18 @@ const DISCLAIMER_TEXT = `
     background: var(--card);
     color: var(--text);
   }
-  /* <input type="date"> renders in the BROWSER's locale, which is day-first
-     outside the US and cannot be overridden. This echo is the authoritative
-     month-first rendering; the input stays as the picker control, and print
-     swaps the two so the PDF never shows a day-first date. */
-  .stmt-date-echo {
-    font-family: 'DM Mono', monospace;
-    font-size: 12px;
-    color: var(--text);
-    margin-top: 4px;
+  /* Deliberately a text input, not <input type="date">. Native date inputs
+     render in the BROWSER's locale — day-first outside the US — and that is
+     not overridable by CSS or attributes. A plain text field is the only way
+     to guarantee a single, unambiguous month-first date on screen and on the
+     PDF. Parsing/validation lives in parseMDY(). */
+  .stmt-date-field input.stmt-date-text {
+    width: 108px;
+    text-align: center;
+  }
+  .stmt-date-field input.stmt-date-text.invalid {
+    border-color: var(--red);
+    color: var(--red);
   }
   .stmt-asof {
     font-size: 10.5px;
@@ -623,11 +626,14 @@ const DISCLAIMER_TEXT = `
     }
     .stmt-brand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .stmt-block-title { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    /* The native date input prints in the browser locale (day-first outside
-       the US), so drop it entirely and let the month-first echo carry the
-       date on the PDF. */
-    .stmt-date-field input { display: none !important; }
-    .stmt-date-echo { margin-top: 0; }
+    /* The field is a plain text input holding MM/DD/YYYY, so it prints
+       correctly on its own — just strip the control chrome. */
+    .stmt-date-field input {
+      border: none;
+      padding: 0;
+      background: transparent;
+      text-align: right;
+    }
     .stmt-section, .stmt-two-col > div { padding-left: 0; padding-right: 0; }
     .stmt-two-col > div + div { padding-left: 16px; }
     .stmt-section { break-inside: auto; page-break-inside: auto; }
@@ -759,6 +765,18 @@ const DISCLAIMER_TEXT = `
       const mm = String(d.getMonth()+1).padStart(2,'0');
       const dd = String(d.getDate()).padStart(2,'0');
       return `${mm}/${dd}/${d.getFullYear()}`;
+    }
+    // Parse a user-typed month-first date. Strict: rejects anything that is
+    // not MM/DD/YYYY, and rejects dates that would silently roll over
+    // (02/31/2026 becomes Mar 3 if handed straight to the Date constructor).
+    // Returns null on anything it does not fully understand.
+    function parseMDY(s) {
+      const m = String(s ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return null;
+      const mm = Number(m[1]), dd = Number(m[2]), yy = Number(m[3]);
+      const d = new Date(yy, mm - 1, dd);
+      if (d.getFullYear() !== yy || d.getMonth() !== mm - 1 || d.getDate() !== dd) return null;
+      return d;
     }
     function fmtMonYear(d) {
       if (!d) return '';
@@ -1052,12 +1070,31 @@ const DISCLAIMER_TEXT = `
       // Buyback schedule (length = term)
       const buyback = computeBuybackSchedule(advance, monthlyPmt, term, lockout, ioInterestCharge);
 
-      // Scheduled rows, oldest-first — drives payment schedule + maturity.
-      // Index i here lines up with buyback[i]; the schedule is reversed for
-      // display inside renderSchedule.
+      // Scheduled rows, oldest-first. Index i here lines up with buyback[i];
+      // the schedule is reversed for display inside renderSchedule.
       const schedRows = dpdAsc.filter(r => Number(r.sched_amt) > 0);
-      const maturity = schedRows.length ? parseISO(schedRows[schedRows.length-1].due_date) : null;
       const firstDue = schedRows.length ? parseISO(schedRows[0].due_date) : null;
+
+      // Two different dates that used to be conflated:
+      //
+      //   scheduleEnd — the last row the dpd array actually reaches. The array
+      //                 is capped at the reporting ceiling, so on a live deal
+      //                 this is the cap, NOT the end of the term.
+      //   maturity    — the contractual maturity date, authoritative from the
+      //                 backend. Deriving it from the last dpd row read the
+      //                 cap instead (deal 1062: Jul 2026 vs the real Jul 2027).
+      //
+      // Falls back to scheduleEnd only if the field is absent.
+      const scheduleEnd = schedRows.length ? parseISO(schedRows[schedRows.length-1].due_date) : null;
+      const maturity = parseISO(deal.maturity_date) || scheduleEnd;
+
+      // The "$0.00 / NA" post-term row only makes sense once the schedule has
+      // actually run to the end of the term. While dpd is truncated by the
+      // reporting ceiling the deal is still mid-term, and anchoring the row to
+      // the cap would assert the schedule had ended a year early.
+      const postTerm = (scheduleEnd && maturity && monthStart(scheduleEnd) >= monthStart(maturity))
+        ? scheduleEnd
+        : null;
 
       // Ready-to-display status string from the backend, and the date the
       // servicing data was cut — reviewers could not otherwise tell how
@@ -1081,8 +1118,11 @@ const DISCLAIMER_TEXT = `
           </div>
           <div class="stmt-date-field">
             <label for="stmt-date-input">Statement Date</label>
-            <input type="date" id="stmt-date-input" value="${statementDateISO}" max="${todayISO_str}">
-            <div class="stmt-date-echo" id="stmt-date-echo">${fmtMDYSlash(parseISO(statementDateISO))}</div>
+            <input type="text" id="stmt-date-input" class="stmt-date-text"
+                   value="${fmtMDYSlash(parseISO(statementDateISO))}"
+                   inputmode="numeric" autocomplete="off" spellcheck="false"
+                   maxlength="10" placeholder="MM/DD/YYYY"
+                   aria-label="Statement date, month first, MM/DD/YYYY">
             ${asOf ? `<div class="stmt-asof">Data as of ${escapeHtml(asOf)}</div>` : ''}
           </div>
         </div>
@@ -1123,26 +1163,36 @@ const DISCLAIMER_TEXT = `
       `;
       $('#statement-content').innerHTML = html;
 
-      // Wire date input
-      $('#stmt-date-input').addEventListener('change', (e) => {
-        // `max` on the input handles the picker UI; the typed/pasted path
-        // can still produce a future value, so clamp defensively here too.
+      // Wire date input. Fires on blur and on Enter.
+      const dateInput = $('#stmt-date-input');
+      dateInput.addEventListener('change', () => {
+        const parsed = parseMDY(dateInput.value);
+        if (!parsed) {
+          // Unparseable — flag it and put the last good value back rather than
+          // re-rendering the statement against a date we did not understand.
+          dateInput.classList.add('invalid');
+          dateInput.value = fmtMDYSlash(parseISO(statementDateISO));
+          return;
+        }
+        // The statement date can never be in the future.
         const today = localISO(new Date());
-        let v = e.target.value || today;
-        if (v > today) { v = today; e.target.value = v; }
+        let v = localISO(parsed);
+        if (v > today) v = today;
         statementDateISO = v;
-        const echo = $('#stmt-date-echo');
-        if (echo) echo.textContent = fmtMDYSlash(parseISO(statementDateISO));
+        // Normalize the display (1/5/2026 → 01/05/2026, future → clamped).
+        dateInput.value = fmtMDYSlash(parseISO(statementDateISO));
         renderOverview(deal, dpdAsc, monthlyPmt);
         renderActivity(dpdAsc, payments);
-        renderSchedule(advance, firstDue, schedRows, buyback, maturity);
+        renderSchedule(advance, firstDue, schedRows, buyback, postTerm);
       });
+      // Clear the invalid flag as soon as the user starts correcting it.
+      dateInput.addEventListener('input', () => dateInput.classList.remove('invalid'));
 
       // Account info (static-ish — only Statement Date varies)
       renderAccount(deal, maturity, asOf);
       renderOverview(deal, dpdAsc, monthlyPmt);
       renderActivity(dpdAsc, payments);
-      renderSchedule(advance, firstDue, schedRows, buyback, maturity);
+      renderSchedule(advance, firstDue, schedRows, buyback, postTerm);
     }
 
     function renderAccount(deal, maturity, asOf) {
@@ -1271,9 +1321,14 @@ const DISCLAIMER_TEXT = `
 
     function renderActivity(dpd, payments) {
       const stmtDate = parseISO(statementDateISO);
-      // Build a combined chronological feed of received + missed events.
-      // Received rows come from get_sponsor_payments (rich method/type data);
-      // missed rows are derived from the dpd schedule.
+      // Build a combined feed of received + missed events. Received rows come
+      // from get_sponsor_payments (rich method/type data); missed rows are
+      // derived from the dpd schedule. Both sources arrive newest-first, but
+      // interleaving two lists still needs an explicit ordering, so this sorts
+      // descending rather than preserving either input order verbatim.
+      //
+      // `events` is display-only — nothing downstream reads it — so the order
+      // here carries no arithmetic.
       const events = [];
       for (const p of (payments || [])) {
         const dd = parseISO(p.payment_date);
@@ -1295,7 +1350,8 @@ const DISCLAIMER_TEXT = `
           });
         }
       }
-      events.sort((a,b) => a.date - b.date);
+      // Newest first, matching the Payment Schedule.
+      events.sort((a,b) => b.date - a.date);
       const tbody = $('#stmt-activity tbody');
       if (!events.length) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--dim);padding:14px;">No payment activity yet.</td></tr>`;
@@ -1326,7 +1382,7 @@ const DISCLAIMER_TEXT = `
       }).join('');
     }
 
-    function renderSchedule(advance, firstDue, schedRows, buyback, maturity) {
+    function renderSchedule(advance, firstDue, schedRows, buyback, postTerm) {
       const tbody = $('#stmt-schedule tbody');
       const rows = [];
       const stmtDate = parseISO(statementDateISO);
@@ -1374,9 +1430,11 @@ const DISCLAIMER_TEXT = `
         </tr>`);
       });
 
-      // Post-term row (one month after maturity, $0.00, NA)
-      if (maturity) {
-        const postDate = addMonths(maturity, 1);
+      // Post-term row (one month after the end of the schedule, $0.00, NA).
+      // Null while the schedule is still truncated by the reporting ceiling —
+      // see the postTerm derivation in renderStatement.
+      if (postTerm) {
+        const postDate = addMonths(postTerm, 1);
         rows.push(`<tr class="post-term">
           <td>${fmtMDY(postDate)}</td>
           <td class="num">${fmtUSD(0)}</td>

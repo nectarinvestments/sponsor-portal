@@ -48,15 +48,19 @@ All three `_as` RPCs are server-gated to master admins — calling them as a non
 Matches the existing PDF template the servicing team uses (Walker's spreadsheet):
 
 - **Brand bar** — purple (`#5b3fb5`), "Nectar" wordmark left, `www.usenectar.com` right
-- **Title row** — entity name, account number, prominent `account_status` badge, statement-date picker (defaults to today), and the `Data as of {as_of}` reporting date
+- **Title row** — entity name, account number, prominent `account_status` badge, month-first statement-date field (defaults to today), and the `Data as of {as_of}` reporting date
 - **Two-column** — Payment Overview / Account Information
-- **Activity** — recorded payments on or before the statement date
-- **Payment Schedule** — origination row (`-advance`), one row per scheduled payment with `Status` and `Buyback Option` columns, and a `$0.00 / NA` post-term row. Rendered **newest-first**, matching the order the backend returns `dpd` in
+- **Activity** — recorded payments and missed months on or before the statement date, newest-first
+- **Payment Schedule** — origination row (`-advance`), one row per scheduled payment with `Status` and `Buyback Option` columns, and a `$0.00 / NA` post-term row (suppressed while the schedule is truncated). Rendered **newest-first**, matching the order the backend returns `dpd` in
 - **Footer** — `DISCLAIMER_TEXT` plus the servicing contact line
 
 ### Dates
 
-All user-facing dates render month-first (US order). The one place this is not automatic is the statement-date `<input type="date">`, which the browser renders in the *viewer's* locale and cannot be styled. `.stmt-date-echo` beneath it carries the authoritative `MM/DD/YYYY` rendering, and `@media print` hides the input so the PDF only ever shows the echo.
+All user-facing dates render month-first (US order).
+
+The statement-date field is a **plain text input, not `<input type="date">`** — this is deliberate. Native date inputs render in the *viewer's* browser locale (day-first outside the US) and that is not overridable by CSS or attributes. A text field is the only way to guarantee one unambiguous month-first date on screen and on the PDF. Do not "improve" it back to a native date picker.
+
+`parseMDY()` parses what the user types. It is strict: `MM/DD/YYYY` only, and it rejects dates that would silently roll over (`02/31/2026` → Mar 3 if handed straight to `new Date`). On an unparseable value the field flags red and reverts to the last good date rather than re-rendering against something it did not understand; on a valid one it normalizes the display (`1/5/2026` → `01/05/2026`) and clamps future dates to today.
 
 ### Account status
 
@@ -70,7 +74,24 @@ Each `dpd` row carries `is_missed` and `received_date` from the backend; the fro
 
 ### Ordering
 
-`dpd` arrives **newest-first** and is rendered in that order. It is never re-sorted. Order-dependent math (buyback index alignment, first-due / maturity, the running reserve balance) needs oldest-first, which `renderStatement` derives as `dpd.slice().reverse()` — reversing the backend's guaranteed order rather than imposing a sort of its own. `renderSchedule` builds rows oldest-first so `buyback[i]` stays aligned with payment `i+1`, then reverses once before writing them out.
+**Both tables render newest-first.**
+
+`dpd` arrives newest-first and is never re-sorted. Order-dependent math (buyback index alignment, first-due / schedule end, the running reserve balance) needs oldest-first, which `renderStatement` derives as `dpd.slice().reverse()` — reversing the backend's guaranteed order rather than imposing a sort of its own. `renderSchedule` builds rows oldest-first so `buyback[i]` stays aligned with payment `i+1`, then reverses once before writing them out.
+
+`renderActivity` is the exception to "preserve backend order": it interleaves two sources (payments from `get_sponsor_payments`, missed rows derived from `dpd`), and merging two lists still needs an explicit ordering, so it sorts descending. Its `events` array is display-only — nothing downstream reads it — so that ordering carries no arithmetic.
+
+### Maturity vs. schedule end
+
+Two dates that are easy to conflate, and were:
+
+- `deal.maturity_date` — the contractual maturity, authoritative from the backend. Use this for the **Maturity Date** row.
+- the last `dpd` row — the **reporting ceiling**, not the end of the term. `dpd` is capped, so on a live deal the last visible row is just where the data stops (deal 1062: capped Jul 2026, actually matures Jul 2027).
+
+Never derive maturity from the `dpd` array. `scheduleEnd` and `maturity` are separate variables in `renderStatement` for exactly this reason.
+
+The "$0.00 / NA" post-term row is anchored to `scheduleEnd`, and is **suppressed entirely while the schedule is still truncated** (`scheduleEnd` earlier than `maturity`). Rendering it mid-term would assert the schedule had ended a year early. Matured deals, where the schedule does reach maturity, keep the row as before.
+
+`deal.days_past_due` is also available on the payload. Currently unused — `account_status` already carries "Past Due - N days" as a display string.
 
 ### Fields taken from the backend as-is
 
@@ -78,7 +99,8 @@ Do not recompute these client-side:
 
 - `term_months` — the contractual term. Counting `dpd` rows is off by one (61 vs 60).
 - `method` on `get_sponsor_payments` — already mapped for display (`Cash` → `Wire`, `Bank Account` → `ACH`).
-- `account_status`, `is_missed`, `as_of`, and the `dpd` sort order.
+- `maturity_date` — the contractual maturity. The last `dpd` row is the reporting ceiling, not maturity.
+- `account_status`, `is_missed`, `as_of`, and the `dpd` / `get_sponsor_payments` sort orders.
 
 ### Disclaimer
 
