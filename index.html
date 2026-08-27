@@ -377,6 +377,21 @@ const DISCLAIMER_TEXT = `
   }
   .blocked-panel a.blocked-mail:hover { background: var(--accent-dim); text-decoration: none; }
 
+  /* Admin-only strip under the simulated sponsor panel. Amber to match the
+     impersonation banner, and hidden in print like the rest of the chrome. */
+  .sim-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 24px;
+    background: #FEF6E1;
+    border-top: 1px solid rgba(214,137,16,0.45);
+    color: #6B4915;
+    font-size: 12px;
+  }
+
   /* Admin banner on a flagged statement. Inside .statement so it prints. */
   .ss-banner {
     background: #FEF6E1;
@@ -749,7 +764,7 @@ const DISCLAIMER_TEXT = `
     @page { size: letter; margin: 0.5in; }
     body { background: #FFFFFF; }
     .app-header, .back-link, .stmt-actions, #app-back, #app-logout, .app-header-right,
-    #impersonation-banner, #impersonation-controls { display: none !important; }
+    #impersonation-banner, #impersonation-controls, .sim-strip { display: none !important; }
     .main { padding: 0; max-width: none; }
     .statement {
       border: none;
@@ -1013,6 +1028,17 @@ const DISCLAIMER_TEXT = `
     let sponsorEmails = null;   // {email, deal_count}[] or null
     let viewingAs = null;       // null = own view; string email = impersonating
 
+    // Admin powers in the UI belong to an admin in their OWN view. While
+    // impersonating, the portal reproduces the sponsor's experience instead —
+    // including the special-servicing block.
+    //
+    // The backend never blocks an admin, so `get_sponsor_statement_as` hands
+    // back the full payload for a flagged account. The simulation is therefore
+    // enforced here, in the frontend, and is a preview only — not a security
+    // boundary. The real boundary is the RPC, which blocks actual sponsors.
+    const adminMode = () => isMaster && !viewingAs;
+    const sponsorSimulated = () => isMaster && !!viewingAs;
+
     // ─── View switching ───────────────────────────────────────
     function setView(name) {
       $('#view-login').classList.toggle('hidden', name !== 'login');
@@ -1090,9 +1116,11 @@ const DISCLAIMER_TEXT = `
       const tbody = $('#picker-tbody');
       // Exactly one trailing column renders, so colspan is always 7.
       // The admin checkbox is never emitted into sponsor HTML at all — it is
-      // not merely hidden with CSS.
-      $('#th-ss').classList.toggle('hidden', !isMaster);
-      $('#th-action').classList.toggle('hidden', isMaster);
+      // not merely hidden with CSS. While impersonating we show the sponsor's
+      // column, not the admin one, so the preview is faithful.
+      const admin = adminMode();
+      $('#th-ss').classList.toggle('hidden', !admin);
+      $('#th-action').classList.toggle('hidden', admin);
       const f = filter.trim().toLowerCase();
       const rows = deals.filter(d =>
         !f || String(d.deal_id).includes(f) || (d.name||'').toLowerCase().includes(f)
@@ -1114,11 +1142,12 @@ const DISCLAIMER_TEXT = `
           : '<span style="color:var(--dim);">—</span>';
 
         const flagged = !!d.special_servicing;
-        // A sponsor's row for a flagged account stays visible but inert.
-        const blocked = flagged && !isMaster;
+        // A sponsor's row for a flagged account stays visible but inert —
+        // and so does an impersonating admin's, so the preview matches.
+        const blocked = flagged && !admin;
 
         let lastCell;
-        if (isMaster) {
+        if (admin) {
           // special_servicing_note is admin-only and always null for
           // sponsors; it never reaches this branch for a non-admin.
           const note = d.special_servicing_note || '';
@@ -1304,6 +1333,16 @@ const DISCLAIMER_TEXT = `
         currentStatement.payments = pmtsResult.data || [];
       }
 
+      // Impersonating admin on a flagged account: the backend handed us the
+      // full statement because admins are never blocked, so reproduce what the
+      // sponsor would hit. Payments were fetched above so the admin's
+      // "view anyway" escape hatch renders a complete statement without a
+      // second round trip.
+      if (sponsorSimulated() && currentStatement.deal.special_servicing) {
+        renderBlocked(null, { simulated: true });
+        return;
+      }
+
       renderStatement();
     }
 
@@ -1312,17 +1351,40 @@ const DISCLAIMER_TEXT = `
     // statement, never a raw error. The copy comes from the server; the
     // fallback deliberately avoids internal terminology too.
     const SERVICING_EMAIL = 'servicing@usenectar.com';
-    function renderBlocked(data) {
-      currentStatement = null;
-      const msg = (data && data.message)
-        || `A statement is not available online for this account. Please contact ${SERVICING_EMAIL} for assistance.`;
+    const BLOCKED_FALLBACK =
+      `A statement is not available online for this account. Please contact ${SERVICING_EMAIL} for assistance.`;
+
+    // `opts.simulated` = an impersonating admin previewing the sponsor's view.
+    // The panel above the divider is byte-for-byte what a sponsor sees; the
+    // strip below it is admin-only chrome and is the only place internal
+    // terminology may appear.
+    function renderBlocked(data, opts) {
+      const simulated = !!(opts && opts.simulated);
+      // Keep the payload only for the simulated bypass; a real sponsor must
+      // not retain statement data behind the panel.
+      if (!simulated) currentStatement = null;
+      // There is no statement to download here.
+      const actions = $('.stmt-actions');
+      if (actions) actions.classList.add('hidden');
+      const msg = (data && data.message) || BLOCKED_FALLBACK;
       $('#statement-content').innerHTML = `
         <div class="blocked-panel">
           <h2>Statement unavailable online</h2>
           <p>${escapeHtml(msg)}</p>
           <a class="blocked-mail" href="mailto:${SERVICING_EMAIL}">Contact servicing</a>
         </div>
+        ${simulated ? `
+        <div class="sim-strip">
+          <span>Admin preview — this is what the sponsor sees. The account is in special servicing.</span>
+          <button type="button" class="btn" id="sim-reveal">View full statement</button>
+        </div>` : ''}
       `;
+      if (simulated) {
+        const reveal = $('#sim-reveal');
+        if (reveal) reveal.addEventListener('click', () => {
+          if (currentStatement && currentStatement.deal) renderStatement();
+        });
+      }
     }
 
     // Derive "Regular Monthly Payment" = mode of sched_amt > 0 in dpd
@@ -1342,6 +1404,9 @@ const DISCLAIMER_TEXT = `
     }
 
     function renderStatement() {
+      // Restore the download button, which renderBlocked may have hidden.
+      const actions = $('.stmt-actions');
+      if (actions) actions.classList.remove('hidden');
       const stmt = currentStatement;
       const deal = stmt.deal;
       // The backend delivers `dpd` newest-first and that is the order the
