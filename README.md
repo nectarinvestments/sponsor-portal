@@ -67,9 +67,24 @@ The accounts table always has 7 columns. Exactly one trailing column renders: `#
 
 `deal.special_servicing` on the statement payload renders `.ss-banner` inside `.statement`, so it reaches the PDF. Do not move it into the app chrome — the print stylesheet hides that.
 
-### Impersonation caveat
+### Impersonation simulates the block
 
-`isMaster` gates the UI; the backend RPCs are the real boundary (`set_special_servicing` raises "Master admin access required"). An admin using "View as sponsor" is **still an admin server-side**: they keep the checkbox column and are never blocked, so impersonation does not preview the sponsor's blocked experience. That is deliberate — faking it in the UI would misrepresent what the backend will actually do.
+Two distinct modes, both derived in one place:
+
+```js
+const adminMode        = () => isMaster && !viewingAs;   // full admin controls
+const sponsorSimulated = () => isMaster && !!viewingAs;  // previewing a sponsor
+```
+
+Anything admin-facing gates on `adminMode()`, **not** `isMaster` — otherwise impersonation leaks admin chrome into what is meant to be a sponsor preview. While impersonating: no checkbox column, no note, flagged rows blocked and unclickable, exactly as a sponsor sees them.
+
+The statement is the interesting case. **The backend does not block admins**, so `get_sponsor_statement_as` returns the full payload for a flagged account. The block is therefore reproduced in the frontend, after the payload arrives, from `deal.special_servicing`.
+
+That makes the simulation a **preview, not a security boundary**. The real boundary is the RPC, which blocks actual sponsors server-side. Never rely on `sponsorSimulated()` to withhold data from someone who should not have it — it only ever runs for a master admin who already has it.
+
+Payments are fetched *before* the simulation check so the admin's "View full statement" escape hatch renders a complete statement with no second round trip. The sponsor panel is byte-for-byte what a sponsor sees; `.sim-strip` beneath it is admin-only chrome and is the sole place internal terminology may appear. It is hidden in print.
+
+`renderBlocked` retains `currentStatement` only in the simulated case — a real sponsor must not keep statement data sitting behind the panel.
 
 ## Statement layout
 
