@@ -43,6 +43,34 @@ Emails listed in the `MASTER_EMAILS` constant (top of the `<script>` block) see 
 
 All three `_as` RPCs are server-gated to master admins — calling them as a non-master returns nothing, so the frontend list is purely a UX convenience. Non-master users never see the dropdown or banner.
 
+## Special servicing
+
+An account can be flagged for special servicing, which withdraws the self-serve statement from the sponsor while leaving it fully available to admins.
+
+**Admins** get a "Special Servicing" checkbox column in the accounts list. Ticking it calls `set_special_servicing({ p_deal_id, p_flag, p_note })`. The update is optimistic — the checkbox has already flipped itself — so on failure it is put back and the error is surfaced in `#picker-toast`; the server is the authority, not the UI. `special_servicing_note` shows as a tooltip on the cell, and ticking reveals an optional inline note field that saves on Enter/blur via a second call.
+
+**Sponsors** never receive the checkbox — it is not rendered into their HTML at all, not merely hidden with CSS, and `special_servicing_note` is null for them server-side. A flagged row stays visible but inert: `.row-blocked`, no click handler attached, and a "Contact servicing" label in the trailing cell.
+
+The phrase "special servicing" is internal terminology and **must not appear in sponsor-facing copy**. There are assertions covering this for both the accounts list and the blocked panel.
+
+### The blocked response
+
+`get_sponsor_statement` returns `{ blocked: true, reason, message }` for a sponsor on a flagged account. This is a *successful* response carrying no `deal`, so `selectDeal` checks for it **before** the not-found check — otherwise it falls straight through to "Account not found or access denied". It is distinct from a `null` return, which still means no access. Mutation-tested: disabling the branch fails four assertions.
+
+`get_sponsor_payments` **throws** for a sponsor on a flagged account rather than returning `{ error }`, so both RPC calls in `selectDeal` are wrapped in `try/catch`. A thrown rejection must not escape.
+
+### Column count
+
+The accounts table always has 7 columns. Exactly one trailing column renders: `#th-ss` (admin checkbox) or `#th-action` (sponsor "Contact servicing"), toggled in `renderPicker` from `isMaster`. Keep the `colspan` on the loading/error/empty rows at 7.
+
+### Admin banner
+
+`deal.special_servicing` on the statement payload renders `.ss-banner` inside `.statement`, so it reaches the PDF. Do not move it into the app chrome — the print stylesheet hides that.
+
+### Impersonation caveat
+
+`isMaster` gates the UI; the backend RPCs are the real boundary (`set_special_servicing` raises "Master admin access required"). An admin using "View as sponsor" is **still an admin server-side**: they keep the checkbox column and are never blocked, so impersonation does not preview the sponsor's blocked experience. That is deliberate — faking it in the UI would misrepresent what the backend will actually do.
+
 ## Statement layout
 
 Matches the existing PDF template the servicing team uses (Walker's spreadsheet):

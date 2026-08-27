@@ -278,6 +278,117 @@ const DISCLAIMER_TEXT = `
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  /* ── SPECIAL SERVICING ──
+     Admin-only controls plus the sponsor-facing blocked treatment. Nothing
+     here may leak internal terminology into sponsor copy — the sponsor sees
+     "Contact servicing" and nothing else. */
+  .picker-toast {
+    margin: 0 0 14px 0;
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    background: rgba(26,158,110,0.08);
+    color: var(--green);
+    border: 1px solid rgba(26,158,110,0.22);
+  }
+  .picker-toast.error {
+    background: rgba(192,57,43,0.08);
+    color: var(--red);
+    border-color: rgba(192,57,43,0.22);
+  }
+  .ss-cell { white-space: nowrap; }
+  .ss-cell input[type="checkbox"] {
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent);
+    vertical-align: middle;
+  }
+  .ss-cell input[type="checkbox"]:disabled { cursor: progress; opacity: 0.5; }
+  .ss-note {
+    width: 132px;
+    margin-left: 8px;
+    padding: 3px 7px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--card);
+    color: var(--text);
+    vertical-align: middle;
+    outline: none;
+  }
+  .ss-note:focus { border-color: var(--accent); }
+  .ss-flag {
+    display: inline-block;
+    margin-left: 7px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--amber);
+    vertical-align: middle;
+  }
+
+  /* Sponsor view of a flagged account: present, visibly inert, no checkbox. */
+  .picker-table tbody tr.row-blocked { cursor: default; }
+  .picker-table tbody tr.row-blocked:hover { background: transparent; }
+  .picker-table tbody tr.row-blocked td { color: var(--dim); }
+  .contact-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10.5px;
+    font-weight: 500;
+    background: rgba(214,137,16,0.10);
+    color: #6B4915;
+    border: 1px solid rgba(214,137,16,0.30);
+    white-space: nowrap;
+  }
+
+  /* Sponsor hitting a flagged statement by deep link / stale state. */
+  .blocked-panel {
+    padding: 54px 40px;
+    text-align: center;
+  }
+  .blocked-panel h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 21px;
+    font-weight: normal;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  .blocked-panel p {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--dim);
+    max-width: 460px;
+    margin: 0 auto 20px auto;
+  }
+  .blocked-panel a.blocked-mail {
+    display: inline-block;
+    padding: 9px 18px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #FFFFFF;
+    font-size: 12.5px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .blocked-panel a.blocked-mail:hover { background: var(--accent-dim); text-decoration: none; }
+
+  /* Admin banner on a flagged statement. Inside .statement so it prints. */
+  .ss-banner {
+    background: #FEF6E1;
+    border-bottom: 1px solid rgba(214,137,16,0.55);
+    color: #6B4915;
+    padding: 11px 32px;
+    font-size: 12.5px;
+    font-weight: 500;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   .pill-acct.good    { background: rgba(26,158,110,0.10); color: var(--green); }
   .pill-acct.bad     { background: rgba(192,57,43,0.10);  color: var(--red); }
   .pill-acct.muted   { background: rgba(1,4,29,0.06);     color: var(--dim); }
@@ -709,6 +820,7 @@ const DISCLAIMER_TEXT = `
     </select>
   </div>
   <input type="text" id="picker-search" class="picker-search" placeholder="Filter by name or ID…">
+  <div id="picker-toast" class="picker-toast hidden" role="status" aria-live="polite"></div>
   <table class="picker-table">
     <thead>
       <tr>
@@ -718,6 +830,11 @@ const DISCLAIMER_TEXT = `
         <th>Account Status</th>
         <th style="text-align:right">Advance</th>
         <th style="text-align:right">Term (mo)</th>
+        <!-- Exactly one of these two renders, so the column count is always
+             7. th-action is the sponsor's "Contact servicing" cell; th-ss is
+             the admin-only Special Servicing checkbox. -->
+        <th id="th-action" class="hidden"></th>
+        <th id="th-ss" class="hidden">Special Servicing</th>
       </tr>
     </thead>
     <tbody id="picker-tbody"></tbody>
@@ -944,14 +1061,15 @@ const DISCLAIMER_TEXT = `
     // ─── Picker ────────────────────────────────────────────────
     async function loadPicker() {
       const tbody = $('#picker-tbody');
-      tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;color:var(--dim);text-align:center;">Loading accounts…</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;color:var(--dim);text-align:center;">Loading accounts…</td></tr>`;
       $('#picker-empty').classList.add('hidden');
+      $('#picker-toast').classList.add('hidden');
 
       const { data, error } = viewingAs
         ? await sb.rpc('get_sponsor_deals_as', { p_email: viewingAs })
         : await sb.rpc('get_sponsor_deals');
       if (error) {
-        tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;color:var(--red);text-align:center;">${escapeHtml(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="padding:20px;color:var(--red);text-align:center;">${escapeHtml(error.message)}</td></tr>`;
         return;
       }
       // Order comes from the backend — open accounts first, closed after.
@@ -970,6 +1088,11 @@ const DISCLAIMER_TEXT = `
 
     function renderPicker(filter) {
       const tbody = $('#picker-tbody');
+      // Exactly one trailing column renders, so colspan is always 7.
+      // The admin checkbox is never emitted into sponsor HTML at all — it is
+      // not merely hidden with CSS.
+      $('#th-ss').classList.toggle('hidden', !isMaster);
+      $('#th-action').classList.toggle('hidden', isMaster);
       const f = filter.trim().toLowerCase();
       const rows = deals.filter(d =>
         !f || String(d.deal_id).includes(f) || (d.name||'').toLowerCase().includes(f)
@@ -989,32 +1112,170 @@ const DISCLAIMER_TEXT = `
         const acctCell = acct
           ? `<span class="pill-acct ${acctStatusClass(acct)}">${escapeHtml(acct)}</span>`
           : '<span style="color:var(--dim);">—</span>';
-        return `<tr data-id="${d.deal_id}">
+
+        const flagged = !!d.special_servicing;
+        // A sponsor's row for a flagged account stays visible but inert.
+        const blocked = flagged && !isMaster;
+
+        let lastCell;
+        if (isMaster) {
+          // special_servicing_note is admin-only and always null for
+          // sponsors; it never reaches this branch for a non-admin.
+          const note = d.special_servicing_note || '';
+          const title = note ? ` title="${escapeHtml(note)}"` : '';
+          lastCell = `<td class="ss-cell"${title}>
+            <input type="checkbox" class="ss-check" data-id="${d.deal_id}"${flagged ? ' checked' : ''}
+                   aria-label="Special servicing for account ${d.deal_id}">
+            ${note ? `<span class="ss-flag" aria-hidden="true">note</span>` : ''}
+          </td>`;
+        } else {
+          lastCell = `<td>${blocked ? '<span class="contact-tag">Contact servicing</span>' : ''}</td>`;
+        }
+
+        return `<tr data-id="${d.deal_id}"${blocked ? ' class="row-blocked"' : ''}>
           <td style="font-family:'DM Mono',monospace;">${d.deal_id}</td>
           <td>${escapeHtml(d.name || '')}</td>
           <td><span class="pill-status ${cls}">${escapeHtml(status || '—')}</span></td>
           <td>${acctCell}</td>
           <td class="num">${d.advance != null ? fmtUSD(d.advance) : ''}</td>
           <td class="num">${d.term_months ?? ''}</td>
+          ${lastCell}
         </tr>`;
-      }).join('') || `<tr><td colspan="6" style="padding:20px;color:var(--dim);text-align:center;">No accounts match "${escapeHtml(filter)}".</td></tr>`;
+      }).join('') || `<tr><td colspan="7" style="padding:20px;color:var(--dim);text-align:center;">No accounts match "${escapeHtml(filter)}".</td></tr>`;
+
       Array.from(tbody.querySelectorAll('tr[data-id]')).forEach(tr => {
-        tr.addEventListener('click', () => selectDeal(Number(tr.dataset.id)));
+        // Blocked sponsor rows are not navigable at all — no handler attached.
+        if (tr.classList.contains('row-blocked')) return;
+        tr.addEventListener('click', (e) => {
+          // Clicks inside the admin checkbox cell toggle the flag; they must
+          // not also open the statement.
+          if (e.target.closest && e.target.closest('.ss-cell')) return;
+          selectDeal(Number(tr.dataset.id));
+        });
+      });
+      Array.from(tbody.querySelectorAll('.ss-check')).forEach(box => {
+        box.addEventListener('change', () => onSpecialServicingToggle(box));
       });
     }
     $('#picker-search').addEventListener('input', e => renderPicker(e.target.value));
+
+    // ─── Special servicing (admin only) ────────────────────────
+    let toastTimer = null;
+    function showToast(msg, kind) {
+      const el = $('#picker-toast');
+      el.textContent = msg;
+      el.classList.toggle('error', kind === 'error');
+      el.classList.remove('hidden');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 5000);
+    }
+
+    // The checkbox has already flipped itself (optimistic). On failure we put
+    // it back and say why; the server is the authority, not the UI.
+    async function onSpecialServicingToggle(box) {
+      const dealId = Number(box.dataset.id);
+      const flag = box.checked;
+      const deal = deals.find(d => Number(d.deal_id) === dealId);
+      box.disabled = true;
+      const { data, error } = await sb.rpc('set_special_servicing', {
+        p_deal_id: dealId, p_flag: flag, p_note: null
+      });
+      box.disabled = false;
+      if (error) {
+        box.checked = !flag;
+        if (deal) deal.special_servicing = !flag;
+        showToast(error.message || 'Could not update special servicing.', 'error');
+        return;
+      }
+      if (deal) {
+        deal.special_servicing = flag;
+        if (!flag) deal.special_servicing_note = null;
+      }
+      const name = (data && data.name) || (deal && deal.name) || '';
+      showToast(flag
+        ? `Marked ${dealId}${name ? ' — ' + name : ''} as special servicing`
+        : `Cleared special servicing on ${dealId}${name ? ' — ' + name : ''}`);
+      // Offer an optional note only when turning the flag ON. The flag is
+      // already saved; the note is a second, entirely optional call.
+      const cell = box.closest('.ss-cell');
+      if (!cell) return;
+      const existing = cell.querySelector('.ss-note');
+      if (!flag) {
+        if (existing) existing.remove();
+        cell.removeAttribute('title');
+        const badge = cell.querySelector('.ss-flag');
+        if (badge) badge.remove();
+        return;
+      }
+      if (!existing) {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.className = 'ss-note';
+        inp.placeholder = 'Note (optional)';
+        inp.maxLength = 200;
+        inp.dataset.id = String(dealId);
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+        inp.addEventListener('blur', () => saveSpecialServicingNote(inp));
+        cell.appendChild(inp);
+        inp.focus();
+      }
+    }
+
+    async function saveSpecialServicingNote(inp) {
+      const dealId = Number(inp.dataset.id);
+      const note = inp.value.trim();
+      const deal = deals.find(d => Number(d.deal_id) === dealId);
+      // Nothing typed, or unchanged — leave the already-saved flag alone.
+      if (!note || note === (deal && deal.special_servicing_note)) { inp.remove(); return; }
+      inp.disabled = true;
+      const { error } = await sb.rpc('set_special_servicing', {
+        p_deal_id: dealId, p_flag: true, p_note: note
+      });
+      inp.disabled = false;
+      if (error) {
+        showToast(error.message || 'Could not save the note.', 'error');
+        return;
+      }
+      if (deal) deal.special_servicing_note = note;
+      const cell = inp.closest('.ss-cell');
+      inp.remove();
+      if (cell) {
+        cell.setAttribute('title', note);
+        if (!cell.querySelector('.ss-flag')) {
+          const badge = document.createElement('span');
+          badge.className = 'ss-flag';
+          badge.setAttribute('aria-hidden', 'true');
+          badge.textContent = 'note';
+          cell.appendChild(badge);
+        }
+      }
+      showToast(`Note saved for ${dealId}`);
+    }
 
     // ─── Statement ─────────────────────────────────────────────
     async function selectDeal(dealId) {
       setView('statement');
       $('#statement-content').innerHTML = `<div class="stmt-loading">Loading statement…</div>`;
       statementDateISO = localISO(new Date());
-      const { data, error } = viewingAs
-        ? await sb.rpc('get_sponsor_statement_as', { p_deal_id: dealId, p_email: viewingAs })
-        : await sb.rpc('get_sponsor_statement', { p_deal_id: dealId });
+      let data, error;
+      try {
+        ({ data, error } = viewingAs
+          ? await sb.rpc('get_sponsor_statement_as', { p_deal_id: dealId, p_email: viewingAs })
+          : await sb.rpc('get_sponsor_statement', { p_deal_id: dealId }));
+      } catch (err) {
+        error = err;
+      }
       if (error) {
         $('#statement-content').innerHTML =
           `<div class="stmt-loading" style="color:var(--red);">${escapeHtml(error.message)}</div>`;
+        return;
+      }
+      // Blocked is a deliberate, successful response — not an error and not a
+      // missing deal. It must be caught BEFORE the not-found check, because a
+      // blocked payload carries no `deal`, and it must never fall through to
+      // the generic error handler.
+      if (data && data.blocked) {
+        renderBlocked(data);
         return;
       }
       if (!data || !data.deal) {
@@ -1025,10 +1286,17 @@ const DISCLAIMER_TEXT = `
       currentStatement = data;
 
       // Second call: per-payment activity (method, type, gross amount).
-      // Failure is non-fatal — the rest of the statement still renders.
-      const pmtsResult = viewingAs
-        ? await sb.rpc('get_sponsor_payments_as', { p_deal_id: dealId, p_email: viewingAs })
-        : await sb.rpc('get_sponsor_payments', { p_deal_id: dealId });
+      // Failure is non-fatal — the rest of the statement still renders. This
+      // RPC *throws* for a sponsor on a flagged account, so the rejection is
+      // caught rather than left to bubble.
+      let pmtsResult;
+      try {
+        pmtsResult = viewingAs
+          ? await sb.rpc('get_sponsor_payments_as', { p_deal_id: dealId, p_email: viewingAs })
+          : await sb.rpc('get_sponsor_payments', { p_deal_id: dealId });
+      } catch (err) {
+        pmtsResult = { error: err };
+      }
       if (pmtsResult.error) {
         console.warn('get_sponsor_payments:', pmtsResult.error.message);
         currentStatement.payments = [];
@@ -1037,6 +1305,24 @@ const DISCLAIMER_TEXT = `
       }
 
       renderStatement();
+    }
+
+    // Sponsor reached a flagged account (deep link, stale state). Render the
+    // backend's message in a clean panel — never an empty or partial
+    // statement, never a raw error. The copy comes from the server; the
+    // fallback deliberately avoids internal terminology too.
+    const SERVICING_EMAIL = 'servicing@usenectar.com';
+    function renderBlocked(data) {
+      currentStatement = null;
+      const msg = (data && data.message)
+        || `A statement is not available online for this account. Please contact ${SERVICING_EMAIL} for assistance.`;
+      $('#statement-content').innerHTML = `
+        <div class="blocked-panel">
+          <h2>Statement unavailable online</h2>
+          <p>${escapeHtml(msg)}</p>
+          <a class="blocked-mail" href="mailto:${SERVICING_EMAIL}">Contact servicing</a>
+        </div>
+      `;
     }
 
     // Derive "Regular Monthly Payment" = mode of sched_amt > 0 in dpd
@@ -1134,6 +1420,7 @@ const DISCLAIMER_TEXT = `
           <div class="wordmark">Nectar</div>
           <div class="url">www.usenectar.com</div>
         </div>
+        ${deal.special_servicing ? `<div class="ss-banner">This account is in special servicing. Sponsors cannot generate statements for it.</div>` : ''}
 
         <div class="stmt-title-row">
           <div>
