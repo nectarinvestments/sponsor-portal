@@ -207,7 +207,7 @@ const DISCLAIMER_TEXT = `
     margin-bottom: 22px;
   }
   .picker-search {
-    width: 100%;
+    flex: 1 1 220px;
     max-width: 360px;
     padding: 8px 12px;
     border: 1px solid var(--border);
@@ -215,10 +215,64 @@ const DISCLAIMER_TEXT = `
     background: var(--card);
     font-family: 'Manrope', sans-serif;
     font-size: 13px;
-    margin-bottom: 18px;
     outline: none;
   }
   .picker-search:focus { border-color: var(--accent); }
+
+  /* ── PICKER FILTERS ──
+     Search box plus two dropdowns on one row, with the result count and the
+     reset control on the line beneath. Everything here filters the already
+     loaded `deals` array client-side — no refetch, and the backend's sort
+     (open before closed, then newest funding date first) is preserved. */
+  .picker-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .picker-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .picker-filter > span {
+    color: var(--dim);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10.5px;
+  }
+  .picker-filter select {
+    padding: 8px 28px 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card);
+    color: var(--text);
+    font-family: 'Manrope', sans-serif;
+    font-size: 13px;
+    outline: none;
+  }
+  .picker-filter select:focus { border-color: var(--accent); }
+  .picker-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 20px;
+    margin-bottom: 18px;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  .picker-clear {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: 'Manrope', sans-serif;
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .picker-clear:hover { color: var(--accent-dim); text-decoration: underline; }
 
   .picker-table {
     width: 100%;
@@ -834,7 +888,30 @@ const DISCLAIMER_TEXT = `
       <option value="">— My account —</option>
     </select>
   </div>
-  <input type="text" id="picker-search" class="picker-search" placeholder="Filter by name or ID…">
+  <div class="picker-filters">
+    <input type="text" id="picker-search" class="picker-search" placeholder="Filter by name or ID…">
+    <label class="picker-filter">
+      <span>Status</span>
+      <select id="picker-filter-status">
+        <option value="all">All</option>
+        <option value="open">Open</option>
+        <option value="closed">Closed</option>
+        <option value="workout">Workout</option>
+      </select>
+    </label>
+    <label class="picker-filter">
+      <span>Account Status</span>
+      <!-- Options are rebuilt from the data on every load — see
+           buildCategoryOptions(). Only "All" is hardcoded. -->
+      <select id="picker-filter-category">
+        <option value="all">All</option>
+      </select>
+    </label>
+  </div>
+  <div class="picker-meta">
+    <span id="picker-count"></span>
+    <button type="button" id="picker-clear" class="picker-clear hidden">Clear filters</button>
+  </div>
   <div id="picker-toast" class="picker-toast hidden" role="status" aria-live="polite"></div>
   <table class="picker-table">
     <thead>
@@ -1104,7 +1181,11 @@ const DISCLAIMER_TEXT = `
       $('#picker-empty').textContent = viewingAs
         ? 'No accounts found for this sponsor.'
         : 'No accounts associated with this email.';
-      renderPicker('');
+      // A fresh dataset (first load, or switching impersonation target)
+      // starts unfiltered, and the category options are rebuilt from it.
+      resetPickerFilters();
+      buildCategoryOptions();
+      renderPicker();
       $('#picker-sub').textContent = viewingAs
         ? `Viewing all ${deals.length} account${deals.length === 1 ? '' : 's'} for ${viewingAs}.`
         : (deals.length === 1
@@ -1112,7 +1193,64 @@ const DISCLAIMER_TEXT = `
             : `${deals.length} accounts on file. Select one to generate an account statement.`);
     }
 
-    function renderPicker(filter) {
+    // ─── Picker filters ────────────────────────────────────────
+    // All three filters are client-side over the already-loaded `deals`
+    // array and combine with AND. `deals` arrives pre-sorted from the
+    // backend, so filtering in place keeps that order.
+    const pickerFilters = { q: '', status: 'all', category: 'all' };
+
+    const normalize = (v) => String(v ?? '').trim();
+
+    function matchesFilters(d) {
+      const q = pickerFilters.q;
+      if (q && !String(d.deal_id).includes(q) && !(d.name || '').toLowerCase().includes(q)) return false;
+      if (pickerFilters.status !== 'all' &&
+          normalize(d.status).toLowerCase() !== pickerFilters.status) return false;
+      // account_category, never account_status — the latter embeds a day
+      // count ("Past Due - 405 days") and so cannot be matched against.
+      if (pickerFilters.category !== 'all' &&
+          normalize(d.account_category) !== pickerFilters.category) return false;
+      return true;
+    }
+
+    function filtersActive() {
+      return !!pickerFilters.q
+          || pickerFilters.status !== 'all'
+          || pickerFilters.category !== 'all';
+    }
+
+    function resetPickerFilters() {
+      pickerFilters.q = '';
+      pickerFilters.status = 'all';
+      pickerFilters.category = 'all';
+      $('#picker-search').value = '';
+      $('#picker-filter-status').value = 'all';
+      $('#picker-filter-category').value = 'all';
+    }
+
+    // Options come from the values present in the data, not a hardcoded
+    // list, so a category added backend-side appears here on its own.
+    // Ordered by frequency (common buckets first), ties alphabetical.
+    function buildCategoryOptions() {
+      const sel = $('#picker-filter-category');
+      const counts = new Map();
+      deals.forEach(d => {
+        const c = normalize(d.account_category);
+        if (c) counts.set(c, (counts.get(c) || 0) + 1);
+      });
+      const cats = Array.from(counts.keys())
+        .sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b));
+      // The selected category can disappear when the dataset changes; don't
+      // leave the select pointing at a value that is no longer offered.
+      if (pickerFilters.category !== 'all' && !counts.has(pickerFilters.category)) {
+        pickerFilters.category = 'all';
+      }
+      sel.innerHTML = '<option value="all">All</option>' +
+        cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+      sel.value = pickerFilters.category;
+    }
+
+    function renderPicker() {
       const tbody = $('#picker-tbody');
       // Exactly one trailing column renders, so colspan is always 7.
       // The admin checkbox is never emitted into sponsor HTML at all — it is
@@ -1121,10 +1259,11 @@ const DISCLAIMER_TEXT = `
       const admin = adminMode();
       $('#th-ss').classList.toggle('hidden', !admin);
       $('#th-action').classList.toggle('hidden', admin);
-      const f = filter.trim().toLowerCase();
-      const rows = deals.filter(d =>
-        !f || String(d.deal_id).includes(f) || (d.name||'').toLowerCase().includes(f)
-      );
+      const rows = deals.filter(matchesFilters);
+      $('#picker-count').textContent = deals.length
+        ? `${rows.length} of ${deals.length} account${deals.length === 1 ? '' : 's'}`
+        : '';
+      $('#picker-clear').classList.toggle('hidden', !filtersActive());
       if (deals.length === 0) {
         tbody.innerHTML = '';
         $('#picker-empty').classList.remove('hidden');
@@ -1170,7 +1309,7 @@ const DISCLAIMER_TEXT = `
           <td class="num">${d.term_months ?? ''}</td>
           ${lastCell}
         </tr>`;
-      }).join('') || `<tr><td colspan="7" style="padding:20px;color:var(--dim);text-align:center;">No accounts match "${escapeHtml(filter)}".</td></tr>`;
+      }).join('') || `<tr><td colspan="7" style="padding:20px;color:var(--dim);text-align:center;">${emptyMessage()}</td></tr>`;
 
       Array.from(tbody.querySelectorAll('tr[data-id]')).forEach(tr => {
         // Blocked sponsor rows are not navigable at all — no handler attached.
@@ -1186,7 +1325,33 @@ const DISCLAIMER_TEXT = `
         box.addEventListener('change', () => onSpecialServicingToggle(box));
       });
     }
-    $('#picker-search').addEventListener('input', e => renderPicker(e.target.value));
+    // Quoting the search term only makes sense when it is the sole filter;
+    // otherwise say so generically.
+    function emptyMessage() {
+      const onlySearch = pickerFilters.q
+        && pickerFilters.status === 'all'
+        && pickerFilters.category === 'all';
+      return onlySearch
+        ? `No accounts match "${escapeHtml(pickerFilters.q)}".`
+        : 'No accounts match the current filters.';
+    }
+
+    $('#picker-search').addEventListener('input', e => {
+      pickerFilters.q = e.target.value.trim().toLowerCase();
+      renderPicker();
+    });
+    $('#picker-filter-status').addEventListener('change', e => {
+      pickerFilters.status = e.target.value;
+      renderPicker();
+    });
+    $('#picker-filter-category').addEventListener('change', e => {
+      pickerFilters.category = e.target.value;
+      renderPicker();
+    });
+    $('#picker-clear').addEventListener('click', () => {
+      resetPickerFilters();
+      renderPicker();
+    });
 
     // ─── Special servicing (admin only) ────────────────────────
     let toastTimer = null;
